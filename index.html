@@ -87,19 +87,20 @@
         ];
 
         // --- Firebase Konfiguration ---
-        // WICHTIG: Wenn du diese Datei lokal speicherst, musst du hier deine Daten eintragen!
+        // Deine echten Daten wurden hier eingefügt
         const getFirebaseConfig = () => {
+            // Prüfung für die Entwicklungsumgebung (Canvas)
             if (window.__firebase_config) {
                 return JSON.parse(window.__firebase_config);
             }
-            // HIER DEINE DATEN EINTRAGEN FÜR LOKALE NUTZUNG:
+            // HIER SIND DEINE DATEN FÜR LOKALE NUTZUNG:
             return {
-                apiKey: "DEIN_API_KEY",
-                authDomain: "DEINE_APP.firebaseapp.com",
-                projectId: "DEINE_PROJECT_ID",
-                storageBucket: "DEINE_APP.appspot.com",
-                messagingSenderId: "DEINE_SENDER_ID",
-                appId: "DEINE_APP_ID"
+                apiKey: "AIzaSyBVO3jh0d1FjC0smGcn88eXS16GI1S6PDE",
+                authDomain: "mabelle-hub.firebaseapp.com",
+                projectId: "mabelle-hub",
+                storageBucket: "mabelle-hub.firebasestorage.app",
+                messagingSenderId: "242799712815",
+                appId: "1:242799712815:web:9c7696ca5c73dc8c5b44da"
             };
         };
 
