@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MaBelle Hub</title>
     
-    <!-- Tailwind CSS für das Design -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Import Map für saubere Modul-Namen -->
+    <!-- Import Map -->
     <script type="importmap">
     {
       "imports": {
@@ -22,16 +22,33 @@
     }
     </script>
     
-    <!-- Babel für JSX Unterstützung im Browser -->
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
         body { background-color: #020617; color: white; }
-        /* Überschreibe Tailwind Defaults für dunkles Theme */
+        .error-box { background: #450a0a; border: 1px solid #f87171; color: #fecaca; padding: 20px; margin: 20px; border-radius: 8px; font-family: monospace; }
     </style>
 </head>
 <body>
     <div id="root"></div>
+    
+    <!-- Globaler Fehler-Fänger für weißen Bildschirm -->
+    <script>
+      window.onerror = function(message, source, lineno, colno, error) {
+        document.getElementById('root').innerHTML = `
+          <div class="error-box">
+            <h3 class="font-bold text-lg mb-2">Kritischer Fehler (Browser/Netzwerk)</h3>
+            <p>${message}</p>
+            <p class="text-sm mt-2 opacity-75">Zeile: ${lineno}</p>
+            <div class="mt-4 text-sm bg-black/30 p-2 rounded">
+               <strong>Tipp:</strong> Wenn du diese Datei per Doppelklick geöffnet hast (file://), blockiert dein Browser wahrscheinlich die Verbindung.<br>
+               Versuche es mit einem lokalen Server (z.B. "Live Server" in VS Code) oder lade die Datei auf Netlify Drop hoch.
+            </div>
+          </div>
+        `;
+      };
+    </script>
 
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect } from 'react';
@@ -47,7 +64,7 @@
         import { 
           Shield, Grid, ShoppingCart, Calendar, Briefcase, 
           LogOut, UserPlus, Trash2, Check, X, User, Lock, ExternalLink, Pencil, Save,
-          Activity, Clock, FileText, LayoutList, Users, Timer, Settings, Globe, Loader
+          Activity, Clock, FileText, LayoutList, Users, Timer, Settings, Globe, Loader, AlertTriangle
         } from 'lucide-react';
 
         // --- Basis Konfiguration (Defaults) ---
@@ -87,13 +104,11 @@
         ];
 
         // --- Firebase Konfiguration ---
-        // Deine echten Daten wurden hier eingefügt
         const getFirebaseConfig = () => {
-            // Prüfung für die Entwicklungsumgebung (Canvas)
             if (window.__firebase_config) {
                 return JSON.parse(window.__firebase_config);
             }
-            // HIER SIND DEINE DATEN FÜR LOKALE NUTZUNG:
+            // DEINE EINGEFÜGTEN DATEN:
             return {
                 apiKey: "AIzaSyBVO3jh0d1FjC0smGcn88eXS16GI1S6PDE",
                 authDomain: "mabelle-hub.firebaseapp.com",
@@ -184,6 +199,7 @@
           const [activeStaff, setActiveStaff] = useState(null); 
           const [view, setView] = useState('loading'); 
           const [error, setError] = useState('');
+          const [authError, setAuthError] = useState(''); // Spezieller Fehler für Start
           const [launchingApp, setLaunchingApp] = useState(null); 
           
           // Admin State
@@ -195,10 +211,15 @@
           // --- Initialisierung ---
           useEffect(() => {
             const initAuth = async () => {
-                if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
-                    await signInWithCustomToken(auth, window.__initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
+                try {
+                    if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
+                        await signInWithCustomToken(auth, window.__initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (e) {
+                    console.error("Auth Error:", e);
+                    setAuthError(e.message);
                 }
             };
             initAuth();
@@ -210,25 +231,33 @@
           useEffect(() => {
             if (!user) return;
             
-            const qStaff = query(collection(db, 'artifacts', appId, 'public', 'data', 'staff'));
-            const unsubStaff = onSnapshot(qStaff, (snapshot) => {
-              const staff = [];
-              snapshot.forEach(doc => staff.push({ id: doc.id, ...doc.data() }));
-              setStaffList(staff);
-              
-              if (view === 'loading') {
-                setView('login');
-              }
-            });
+            // Fehlertoleranz beim Laden der Staff-Liste
+            let unsubStaff = () => {};
+            try {
+                const qStaff = query(collection(db, 'artifacts', appId, 'public', 'data', 'staff'));
+                unsubStaff = onSnapshot(qStaff, (snapshot) => {
+                  const staff = [];
+                  snapshot.forEach(doc => staff.push({ id: doc.id, ...doc.data() }));
+                  setStaffList(staff);
+                  if (view === 'loading') setView('login');
+                }, (err) => {
+                    console.error("DB Error:", err);
+                    setAuthError("Kein Zugriff auf Datenbank: " + err.message);
+                });
+            } catch(e) {
+                setAuthError("DB Init Error: " + e.message);
+            }
 
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'app_urls');
-            const unsubConfig = onSnapshot(docRef, (docSnap) => {
-              if (docSnap.exists()) {
-                const data = docSnap.data();
-                setCustomUrls(data);
-                setUrlForm(data); 
-              }
-            });
+            let unsubConfig = () => {};
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'app_urls');
+                unsubConfig = onSnapshot(docRef, (docSnap) => {
+                  if (docSnap.exists()) {
+                    setCustomUrls(docSnap.data());
+                    setUrlForm(docSnap.data()); 
+                  }
+                }, (err) => console.log("Config laden fehlgeschlagen (nicht kritisch):", err));
+            } catch(e) {}
 
             return () => {
               unsubStaff();
@@ -239,7 +268,6 @@
           // --- Logs laden ---
           useEffect(() => {
             if (!user || !activeStaff?.isAdmin) return;
-
             const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'access_logs'));
             const unsubscribe = onSnapshot(q, (snapshot) => {
               const loadedLogs = [];
@@ -247,7 +275,6 @@
               loadedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
               setLogs(loadedLogs);
             });
-
             return () => unsubscribe();
           }, [user, activeStaff]);
 
@@ -256,17 +283,10 @@
             try {
               const actor = staffMember || activeStaff;
               if (!actor) return;
-              
               await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'access_logs'), {
-                type, 
-                details,
-                userId: actor.id,
-                userName: actor.name,
-                timestamp: new Date().toISOString()
+                type, details, userId: actor.id, userName: actor.name, timestamp: new Date().toISOString()
               });
-            } catch (e) {
-              console.error("Log error:", e);
-            }
+            } catch (e) { console.error("Log error:", e); }
           };
 
           // --- Handlers ---
@@ -274,22 +294,17 @@
             if (!user) return;
             try {
               await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', 'admin-001'), {
-                name: 'Administrator',
-                pin: '0000',
-                isAdmin: true,
-                permissions: ['manager', 'order', 'booking', 'timer'],
-                createdAt: new Date().toISOString()
+                name: 'Administrator', pin: '0000', isAdmin: true,
+                permissions: ['manager', 'order', 'booking', 'timer'], createdAt: new Date().toISOString()
               });
               window.location.reload(); 
             } catch (e) {
-              console.error(e);
-              setError('Fehler beim Erstellen des Admins: ' + e.message);
+              setError('Fehler beim Erstellen: ' + e.message);
             }
           };
 
           const handleGlobalPinLogin = (enteredPin) => {
             const foundUser = staffList.find(s => s.pin === enteredPin);
-
             if (foundUser) {
               setActiveStaff(foundUser);
               setView('dashboard');
@@ -304,51 +319,23 @@
           const handleAppLaunch = async (appConf) => {
             if (launchingApp) return; 
             setLaunchingApp(appConf.id);
-            
             try {
               const targetUrl = customUrls[appConf.id] || appConf.defaultUrl;
               const newWindow = window.open('', '_blank');
               if (newWindow) {
-                  newWindow.document.write(`
-                    <html>
-                      <head><title>Verbinde...</title></head>
-                      <style>
-                        body{background:#020617;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;margin:0;}
-                        .loader {border: 3px solid #1e293b;border-top: 3px solid #d97706;border-radius: 50%;width: 30px;height: 30px;animation: spin 1s linear infinite;margin-bottom:15px;}
-                        @keyframes spin {0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);}}
-                      </style>
-                      <body>
-                        <div class="loader"></div>
-                        <div>Logge ein bei ${appConf.name}...</div>
-                      </body>
-                    </html>
-                  `);
+                  newWindow.document.write(`<html><head><title>Verbinde...</title></head><body style="background:#020617;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;"><div>Logge ein bei ${appConf.name}...</div></body></html>`);
               }
-
               const token = crypto.randomUUID();
-              const expiresAt = new Date(Date.now() + 60 * 1000); 
-
               await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'auth_tokens', token), {
-                userId: activeStaff.id,
-                userName: activeStaff.name,
-                timestamp: new Date().toISOString(),
-                expiresAt: expiresAt.toISOString(),
-                used: false,
-                targetApp: appConf.id
+                userId: activeStaff.id, userName: activeStaff.name, timestamp: new Date().toISOString(),
+                expiresAt: (new Date(Date.now() + 60 * 1000)).toISOString(), used: false, targetApp: appConf.id
               });
-
               await logActivity('APP_ACCESS', `App geöffnet: ${appConf.name}`);
-
-              if (newWindow) {
-                const separator = targetUrl.includes('?') ? '&' : '?';
-                newWindow.location.href = `${targetUrl}${separator}auth_token=${token}`;
-              } else {
-                 const separator = targetUrl.includes('?') ? '&' : '?';
-                 window.location.href = `${targetUrl}${separator}auth_token=${token}`;
-              }
-
+              const separator = targetUrl.includes('?') ? '&' : '?';
+              const finalUrl = `${targetUrl}${separator}auth_token=${token}`;
+              if (newWindow) newWindow.location.href = finalUrl;
+              else window.location.href = finalUrl;
             } catch (e) {
-              console.error("Launch Error", e);
               alert("Fehler beim Starten der App.");
             } finally {
               setLaunchingApp(null);
@@ -362,87 +349,55 @@
             setAdminTab('staff');
           };
 
-          const resetForm = () => {
-            setFormData({ name: '', pin: '', isAdmin: false });
-            setEditingId(null);
-          };
-
-          const handleEditClick = (staff) => {
-            setFormData({
-              name: staff.name,
-              pin: staff.pin,
-              isAdmin: staff.isAdmin || false
-            });
-            setEditingId(staff.id);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          };
+          const resetForm = () => { setFormData({ name: '', pin: '', isAdmin: false }); setEditingId(null); };
+          const handleEditClick = (staff) => { setFormData({ name: staff.name, pin: staff.pin, isAdmin: staff.isAdmin || false }); setEditingId(staff.id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
           const handleSaveStaff = async () => {
             if (!formData.name || formData.pin.length < 4) return;
             const pinExists = staffList.some(s => s.pin === formData.pin && s.id !== editingId);
-            if (pinExists) {
-                alert("Diese PIN wird bereits verwendet!");
-                return;
-            }
+            if (pinExists) { alert("PIN belegt!"); return; }
             try {
-              if (editingId) {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', editingId), {
-                  name: formData.name,
-                  pin: formData.pin,
-                  isAdmin: formData.isAdmin,
-                });
-                logActivity('ADMIN_ACTION', `Mitarbeiter bearbeitet: ${formData.name}`);
+              const data = { name: formData.name, pin: formData.pin, isAdmin: formData.isAdmin };
+              if (!editingId) {
+                 data.permissions = formData.isAdmin ? ['manager', 'order', 'booking', 'timer'] : [];
+                 data.createdAt = new Date().toISOString();
+                 await setDoc(doc(collection(db, 'artifacts', appId, 'public', 'data', 'staff')), data);
               } else {
-                await setDoc(doc(collection(db, 'artifacts', appId, 'public', 'data', 'staff')), {
-                  name: formData.name,
-                  pin: formData.pin,
-                  isAdmin: formData.isAdmin,
-                  permissions: formData.isAdmin ? ['manager', 'order', 'booking', 'timer'] : [],
-                  createdAt: new Date().toISOString()
-                });
-                logActivity('ADMIN_ACTION', `Neuer Mitarbeiter angelegt: ${formData.name}`);
+                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', editingId), data);
               }
               resetForm();
-            } catch (e) {
-              console.error(e);
-              setError('Fehler beim Speichern');
-            }
+            } catch (e) { setError('Fehler beim Speichern'); }
           };
 
           const handleDeleteStaff = async (id, name) => {
             if(id === activeStaff.id) return;
             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', id));
-            logActivity('ADMIN_ACTION', `Mitarbeiter gelöscht: ${name}`);
           };
 
           const togglePermission = async (staffId, appIdTarget, currentPermissions) => {
             const perms = currentPermissions || [];
-            let newPerms;
-            if (perms.includes(appIdTarget)) {
-              newPerms = perms.filter(p => p !== appIdTarget);
-            } else {
-              newPerms = [...perms, appIdTarget];
-            }
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', staffId), {
-              permissions: newPerms
-            });
+            const newPerms = perms.includes(appIdTarget) ? perms.filter(p => p !== appIdTarget) : [...perms, appIdTarget];
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', staffId), { permissions: newPerms });
           };
 
           const handleSaveUrls = async () => {
-            try {
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'app_urls'), urlForm);
-              logActivity('ADMIN_ACTION', 'App URLs aktualisiert');
-              alert('URLs erfolgreich gespeichert!');
-            } catch (e) {
-              console.error(e);
-              alert('Fehler beim Speichern der URLs');
-            }
+            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'app_urls'), urlForm); alert('Gespeichert!'); } catch (e) { alert('Fehler!'); }
           };
 
           // --- Views ---
 
           if (view === 'loading') {
-            return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-amber-600 font-medium tracking-widest animate-pulse">LÄDT MABELLE HUB...</div>;
+            return (
+              <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-amber-600 font-medium tracking-widest p-4 text-center">
+                <div className="mb-4">LÄDT MABELLE HUB...</div>
+                {authError && (
+                  <div className="bg-rose-950/50 border border-rose-900 p-4 rounded text-rose-300 max-w-md text-sm font-mono mt-4">
+                    <div className="flex items-center gap-2 mb-2 font-bold"><AlertTriangle size={16}/> Fehler aufgetreten:</div>
+                    {authError}
+                  </div>
+                )}
+              </div>
+            );
           }
 
           if (staffList.length === 0) {
@@ -452,12 +407,8 @@
                   <Shield className="w-16 h-16 text-amber-600 mx-auto mb-4" />
                   <h1 className="text-2xl font-bold text-white mb-2">WILLKOMMEN BEI MABELLE HUB</h1>
                   <p className="text-slate-400 mb-6">Erstelle einen Administrator-Account.</p>
-                  <button 
-                    onClick={handleCreateFirstAdmin}
-                    className="w-full bg-gradient-to-r from-amber-700 to-amber-600 text-white py-3 rounded-xl font-bold tracking-wide hover:from-amber-600 hover:to-amber-500 transition-all shadow-lg shadow-amber-900/20"
-                  >
-                    ADMIN ACCOUNT ERSTELLEN
-                  </button>
+                  <button onClick={handleCreateFirstAdmin} className="w-full bg-gradient-to-r from-amber-700 to-amber-600 text-white py-3 rounded-xl font-bold">ADMIN ACCOUNT ERSTELLEN</button>
+                  {error && <p className="text-rose-500 mt-2">{error}</p>}
                 </div>
               </div>
             );
@@ -472,12 +423,7 @@
                   </h1>
                   <p className="text-slate-500 uppercase tracking-widest text-xs">Login</p>
                 </div>
-                
-                <PinPad 
-                  onComplete={handleGlobalPinLogin} 
-                  disabled={false}
-                />
-
+                <PinPad onComplete={handleGlobalPinLogin} disabled={false} />
                 {error && (
                   <div className="mt-8 text-rose-400 font-medium bg-rose-950/30 border border-rose-900/50 px-6 py-3 rounded-lg animate-pulse flex items-center gap-2">
                     <Shield size={16} /> {error}
@@ -493,29 +439,19 @@
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-amber-600 to-amber-700 rounded-lg flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-amber-900/20">M</div>
-                    <span className="text-xl tracking-widest text-white">
-                      <span className="font-bold">MABELLE</span> <span className="font-normal text-amber-600">HUB</span>
-                    </span>
+                    <span className="text-xl tracking-widest text-white"><span className="font-bold">MABELLE</span> <span className="font-normal text-amber-600">HUB</span></span>
                   </div>
-                  
                   <div className="flex items-center gap-6">
                     <div className="text-right hidden sm:block">
                       <div className="text-sm font-medium text-white">{activeStaff.name}</div>
                       <div className="text-[10px] uppercase tracking-wider text-amber-600">{activeStaff.isAdmin ? 'Administrator' : 'Mitarbeiter'}</div>
                     </div>
-                    <button 
-                      onClick={handleLogout}
-                      className="p-3 hover:bg-slate-800 rounded-full text-slate-500 hover:text-amber-500 transition-colors"
-                      title="Abmelden"
-                    >
-                      <LogOut size={20} />
-                    </button>
+                    <button onClick={handleLogout} className="p-3 hover:bg-slate-800 rounded-full text-slate-500 hover:text-amber-500 transition-colors"><LogOut size={20} /></button>
                   </div>
                 </div>
               </header>
 
               <main className="max-w-7xl mx-auto p-6 py-10">
-                
                 <h2 className="text-xl font-medium text-white mb-8 flex items-center gap-3">
                   <span className="p-2 bg-slate-800 rounded-lg text-amber-500"><Grid size={20} /></span>
                   <span className="tracking-wide">DEINE APPS</span>
@@ -526,16 +462,9 @@
                     const hasAccess = activeStaff.isAdmin || (activeStaff.permissions || []).includes(appConf.id);
                     const IconComponent = appConf.icon;
                     const isLaunching = launchingApp === appConf.id;
-                    
                     if (!hasAccess) return null; 
-
                     return (
-                      <button 
-                        key={appConf.id}
-                        onClick={() => handleAppLaunch(appConf)} 
-                        disabled={isLaunching}
-                        className="text-left w-full block bg-slate-900 rounded-2xl shadow-lg border border-slate-800 hover:border-amber-600/50 hover:shadow-2xl hover:shadow-amber-900/10 hover:-translate-y-1 transition-all duration-300 overflow-hidden group cursor-pointer relative"
-                      >
+                      <button key={appConf.id} onClick={() => handleAppLaunch(appConf)} disabled={isLaunching} className="text-left w-full block bg-slate-900 rounded-2xl shadow-lg border border-slate-800 hover:border-amber-600/50 hover:shadow-2xl hover:shadow-amber-900/10 hover:-translate-y-1 transition-all duration-300 overflow-hidden group cursor-pointer relative">
                         {isLaunching && (
                           <div className="absolute inset-0 bg-slate-900/80 z-20 flex flex-col items-center justify-center text-amber-500 gap-2">
                             <Loader size={32} className="animate-spin" />
@@ -548,122 +477,57 @@
                         </div>
                         <div className="p-6">
                           <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2 group-hover:text-amber-500 transition-colors">
-                            {appConf.name}
-                            <ExternalLink size={14} className="text-slate-600 group-hover:text-amber-500/50" />
+                            {appConf.name} <ExternalLink size={14} className="text-slate-600 group-hover:text-amber-500/50" />
                           </h3>
                           <p className="text-slate-400 text-xs">{appConf.description}</p>
                         </div>
                       </button>
                     );
                   })}
-                  
-                  {(!activeStaff.isAdmin && (!activeStaff.permissions || activeStaff.permissions.length === 0)) && (
-                    <div className="col-span-full py-16 text-center bg-slate-900 rounded-2xl border border-dashed border-slate-700">
-                      <Lock className="mx-auto w-12 h-12 text-slate-700 mb-4" />
-                      <p className="text-slate-400">Keine Apps freigegeben.</p>
-                    </div>
-                  )}
                 </div>
 
                 {activeStaff.isAdmin && (
                   <div className="border-t border-slate-800 pt-10">
                     <h2 className="text-xl font-medium text-white mb-8 flex items-center gap-3">
-                      <span className="p-2 bg-slate-800 rounded-lg text-amber-500"><Shield size={20} /></span>
-                      <span className="tracking-wide">VERWALTUNG</span>
+                      <span className="p-2 bg-slate-800 rounded-lg text-amber-500"><Shield size={20} /></span> <span className="tracking-wide">VERWALTUNG</span>
                     </h2>
 
                     <div className="flex gap-4 mb-6">
-                       <button 
-                        onClick={() => setAdminTab('staff')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${adminTab === 'staff' ? 'bg-amber-600 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}
-                       >
-                         <Users size={18} /> Mitarbeiter
-                       </button>
-                       <button 
-                        onClick={() => setAdminTab('apps')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${adminTab === 'apps' ? 'bg-amber-600 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}
-                       >
-                         <Settings size={18} /> Apps
-                       </button>
-                       <button 
-                        onClick={() => setAdminTab('logs')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${adminTab === 'logs' ? 'bg-amber-600 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}
-                       >
-                         <LayoutList size={18} /> Protokoll
-                       </button>
+                       <button onClick={() => setAdminTab('staff')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${adminTab === 'staff' ? 'bg-amber-600 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}><Users size={18} /> Mitarbeiter</button>
+                       <button onClick={() => setAdminTab('apps')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${adminTab === 'apps' ? 'bg-amber-600 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}><Settings size={18} /> Apps</button>
+                       <button onClick={() => setAdminTab('logs')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${adminTab === 'logs' ? 'bg-amber-600 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}><LayoutList size={18} /> Protokoll</button>
                     </div>
 
                     <div className="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 overflow-hidden min-h-[400px]">
-                      
                       {adminTab === 'staff' && (
                         <>
                           <div className={`p-8 border-b border-slate-800 flex flex-wrap gap-6 items-end transition-colors duration-300 ${editingId ? 'bg-amber-900/10' : 'bg-slate-900'}`}>
                             <div className="flex-1 min-w-[200px]">
-                              <label className="block text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">
-                                {editingId ? 'Mitarbeiter Bearbeiten' : 'Neuer Mitarbeiter Name'}
-                              </label>
-                              <input 
-                                type="text" 
-                                value={formData.name}
-                                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-amber-600/50 focus:border-amber-600 transition-all placeholder:text-slate-600"
-                                placeholder="Max Mustermann"
-                              />
+                              <label className="block text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">{editingId ? 'Mitarbeiter Bearbeiten' : 'Neuer Mitarbeiter Name'}</label>
+                              <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-amber-600/50" placeholder="Max Mustermann" />
                             </div>
                             <div className="w-40">
                               <label className="block text-xs font-bold text-amber-600 uppercase tracking-wider mb-2">PIN Code</label>
-                              <input 
-                                type="text" 
-                                maxLength={4}
-                                value={formData.pin}
-                                onChange={(e) => setFormData({...formData, pin: e.target.value.replace(/\D/g,'')})}
-                                className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-amber-600/50 focus:border-amber-600 transition-all font-mono text-center placeholder:text-slate-600"
-                                placeholder="0000"
-                              />
+                              <input type="text" maxLength={4} value={formData.pin} onChange={(e) => setFormData({...formData, pin: e.target.value.replace(/\D/g,'')})} className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-amber-600/50 text-center" placeholder="0000" />
                             </div>
                             <div className="flex items-center gap-3 pb-3 h-12">
                               <div className="relative flex items-center">
-                                <input 
-                                  type="checkbox" 
-                                  id="isAdmin" 
-                                  checked={formData.isAdmin}
-                                  onChange={(e) => setFormData({...formData, isAdmin: e.target.checked})}
-                                  className="peer h-5 w-5 cursor-pointer appearance-none rounded border border-slate-600 bg-slate-950 checked:border-amber-600 checked:bg-amber-600 transition-all"
-                                />
+                                <input type="checkbox" id="isAdmin" checked={formData.isAdmin} onChange={(e) => setFormData({...formData, isAdmin: e.target.checked})} className="peer h-5 w-5 cursor-pointer appearance-none rounded border border-slate-600 bg-slate-950 checked:border-amber-600 checked:bg-amber-600" />
                                 <Check size={14} className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-black opacity-0 peer-checked:opacity-100" />
                               </div>
                               <label htmlFor="isAdmin" className="text-sm text-slate-300 cursor-pointer select-none font-medium">Admin</label>
                             </div>
-                            
                             <div className="flex gap-2">
-                              {editingId && (
-                                <button 
-                                  onClick={resetForm}
-                                  className="bg-slate-800 text-slate-400 px-4 py-3 rounded-xl font-bold tracking-wide hover:bg-slate-700 transition-all"
-                                >
-                                  Abbrechen
-                                </button>
-                              )}
-                              <button 
-                                onClick={handleSaveStaff}
-                                disabled={!formData.name || formData.pin.length < 4}
-                                className="bg-amber-600 text-slate-950 px-8 py-3 rounded-xl font-bold tracking-wide hover:bg-amber-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-amber-900/20"
-                              >
-                                {editingId ? <Save size={18} /> : <UserPlus size={18} />}
-                                <span className="uppercase text-xs">{editingId ? 'Speichern' : 'Anlegen'}</span>
-                              </button>
+                              {editingId && <button onClick={resetForm} className="bg-slate-800 text-slate-400 px-4 py-3 rounded-xl font-bold tracking-wide hover:bg-slate-700">Abbrechen</button>}
+                              <button onClick={handleSaveStaff} disabled={!formData.name || formData.pin.length < 4} className="bg-amber-600 text-slate-950 px-8 py-3 rounded-xl font-bold tracking-wide hover:bg-amber-500 disabled:opacity-30 flex items-center gap-2">{editingId ? <Save size={18} /> : <UserPlus size={18} />} <span className="uppercase text-xs">{editingId ? 'Speichern' : 'Anlegen'}</span></button>
                             </div>
                           </div>
-
                           <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                               <thead>
                                 <tr className="bg-slate-950 text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
                                   <th className="px-6 py-5 font-bold">Mitarbeiter</th>
-                                  <th className="px-4 py-5 font-bold text-center">Manager</th>
-                                  <th className="px-4 py-5 font-bold text-center">Order</th>
-                                  <th className="px-4 py-5 font-bold text-center">Booking</th>
-                                  <th className="px-4 py-5 font-bold text-center">Timer</th>
+                                  {DEFAULT_APPS.map(app => <th key={app.id} className="px-4 py-5 font-bold text-center">{app.name.replace('MABELLE ', '')}</th>)}
                                   <th className="px-6 py-5 font-bold text-right">Aktion</th>
                                 </tr>
                               </thead>
@@ -681,36 +545,15 @@
                                       const hasPerm = (staff.permissions || []).includes(appConf.id);
                                       return (
                                         <td key={appConf.id} className="px-4 py-5 text-center">
-                                          <button 
-                                            onClick={() => togglePermission(staff.id, appConf.id, staff.permissions)}
-                                            disabled={staff.isAdmin}
-                                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                                              staff.isAdmin 
-                                                ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
-                                                : hasPerm 
-                                                  ? 'bg-amber-900/30 text-amber-500 border border-amber-700/50 shadow-[0_0_10px_rgba(217,119,6,0.1)]' 
-                                                  : 'bg-slate-950 text-slate-700 border border-slate-800 hover:border-slate-600'
-                                            }`}
-                                          >
+                                          <button onClick={() => togglePermission(staff.id, appConf.id, staff.permissions)} disabled={staff.isAdmin} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${staff.isAdmin ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed' : hasPerm ? 'bg-amber-900/30 text-amber-500 border border-amber-700/50' : 'bg-slate-950 text-slate-700 border border-slate-800'}`}>
                                             {staff.isAdmin || hasPerm ? <Check size={20} strokeWidth={3} /> : <X size={20} />}
                                           </button>
                                         </td>
                                       );
                                     })}
                                     <td className="px-6 py-5 text-right flex justify-end gap-2">
-                                      <button 
-                                        onClick={() => handleEditClick(staff)}
-                                        className="p-3 text-slate-400 hover:text-amber-500 hover:bg-slate-800 rounded-xl transition"
-                                      >
-                                        <Pencil size={18} />
-                                      </button>
-                                      <button 
-                                        onClick={() => handleDeleteStaff(staff.id, staff.name)}
-                                        disabled={staff.id === activeStaff.id}
-                                        className="p-3 text-slate-600 hover:text-rose-500 hover:bg-rose-950/30 rounded-xl transition disabled:opacity-20"
-                                      >
-                                        <Trash2 size={18} />
-                                      </button>
+                                      <button onClick={() => handleEditClick(staff)} className="p-3 text-slate-400 hover:text-amber-500 hover:bg-slate-800 rounded-xl transition"><Pencil size={18} /></button>
+                                      <button onClick={() => handleDeleteStaff(staff.id, staff.name)} disabled={staff.id === activeStaff.id} className="p-3 text-slate-600 hover:text-rose-500 hover:bg-rose-950/30 rounded-xl transition disabled:opacity-20"><Trash2 size={18} /></button>
                                     </td>
                                   </tr>
                                 ))}
@@ -722,40 +565,23 @@
 
                       {adminTab === 'apps' && (
                         <div className="p-8">
-                          <h3 className="text-white font-bold mb-6 flex items-center gap-2">
-                            <Globe size={20} className="text-amber-500" />
-                            App Links konfigurieren
-                          </h3>
+                          <h3 className="text-white font-bold mb-6 flex items-center gap-2"><Globe size={20} className="text-amber-500" /> App Links konfigurieren</h3>
                           <div className="space-y-6 max-w-3xl">
                             {DEFAULT_APPS.map(appConf => {
                                 const IconComponent = appConf.icon;
                                 return (
                                   <div key={appConf.id} className="bg-slate-950 p-6 rounded-xl border border-slate-800 flex flex-col md:flex-row gap-4 items-start md:items-center">
-                                    <div className={`p-4 rounded-lg ${appConf.color} text-white`}>
-                                      <IconComponent size={24} />
-                                    </div>
+                                    <div className={`p-4 rounded-lg ${appConf.color} text-white`}><IconComponent size={24} /></div>
                                     <div className="flex-1 w-full">
-                                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                        {appConf.name} URL
-                                      </label>
-                                      <input 
-                                        type="text" 
-                                        value={urlForm[appConf.id] || appConf.defaultUrl}
-                                        onChange={(e) => setUrlForm({...urlForm, [appConf.id]: e.target.value})}
-                                        className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-amber-600/50 transition-all font-mono text-sm"
-                                      />
+                                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{appConf.name} URL</label>
+                                      <input type="text" value={urlForm[appConf.id] || appConf.defaultUrl} onChange={(e) => setUrlForm({...urlForm, [appConf.id]: e.target.value})} className="w-full px-4 py-3 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-amber-600/50 font-mono text-sm" />
                                       <p className="text-xs text-slate-600 mt-1">Standard: {appConf.defaultUrl}</p>
                                     </div>
                                   </div>
                                 );
                             })}
                             <div className="pt-4 flex justify-end">
-                              <button 
-                                onClick={handleSaveUrls}
-                                className="bg-amber-600 text-slate-950 px-8 py-3 rounded-xl font-bold tracking-wide hover:bg-amber-500 flex items-center gap-2 transition-all shadow-lg shadow-amber-900/20"
-                              >
-                                <Save size={18} /> SPEICHERN
-                              </button>
+                              <button onClick={handleSaveUrls} className="bg-amber-600 text-slate-950 px-8 py-3 rounded-xl font-bold tracking-wide hover:bg-amber-500 flex items-center gap-2"><Save size={18} /> SPEICHERN</button>
                             </div>
                           </div>
                         </div>
@@ -766,50 +592,29 @@
                            <table className="w-full text-left border-collapse">
                               <thead>
                                 <tr className="bg-slate-950 text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
-                                  <th className="px-8 py-5 font-bold w-48">Zeitpunkt</th>
-                                  <th className="px-6 py-5 font-bold w-48">Mitarbeiter</th>
-                                  <th className="px-6 py-5 font-bold">Aktivität</th>
+                                  <th className="px-8 py-5 font-bold w-48">Zeitpunkt</th><th className="px-6 py-5 font-bold w-48">Mitarbeiter</th><th className="px-6 py-5 font-bold">Aktivität</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-800">
-                                {logs.length === 0 ? (
-                                  <tr>
-                                    <td colSpan={3} className="px-8 py-12 text-center text-slate-500 italic">
-                                      Noch keine Aktivitäten protokolliert.
-                                    </td>
-                                  </tr>
-                                ) : (
-                                  logs.map(log => (
+                                {logs.length === 0 ? <tr><td colSpan={3} className="px-8 py-12 text-center text-slate-500 italic">Noch keine Aktivitäten protokolliert.</td></tr> : logs.map(log => (
                                     <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
-                                      <td className="px-8 py-4 text-slate-400 text-sm font-mono whitespace-nowrap">
-                                        <div className="flex items-center gap-2">
-                                          <Clock size={14} className="text-slate-600" />
-                                          {new Date(log.timestamp).toLocaleString('de-DE')}
-                                        </div>
-                                      </td>
-                                      <td className="px-6 py-4">
-                                        <div className="font-medium text-white">{log.userName}</div>
-                                      </td>
-                                      <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2 text-sm text-slate-300">
+                                      <td className="px-8 py-4 text-slate-400 text-sm font-mono whitespace-nowrap"><div className="flex items-center gap-2"><Clock size={14} className="text-slate-600" />{new Date(log.timestamp).toLocaleString('de-DE')}</div></td>
+                                      <td className="px-6 py-4"><div className="font-medium text-white">{log.userName}</div></td>
+                                      <td className="px-6 py-4"><div className="flex items-center gap-2 text-sm text-slate-300">
                                           {log.type === 'LOGIN' && <Activity size={16} className="text-emerald-500" />}
                                           {log.type === 'APP_ACCESS' && <ExternalLink size={16} className="text-amber-500" />}
                                           {log.type === 'ADMIN_ACTION' && <Shield size={16} className="text-rose-500" />}
                                           {log.details}
-                                        </div>
-                                      </td>
+                                        </div></td>
                                     </tr>
-                                  ))
-                                )}
+                                  ))}
                               </tbody>
                            </table>
                         </div>
                       )}
-
                     </div>
                   </div>
                 )}
-
               </main>
             </div>
           );
