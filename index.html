@@ -27,31 +27,17 @@
 
     <style>
         body { background-color: #020617; color: white; }
-        .error-box { background: #450a0a; border: 1px solid #f87171; color: #fecaca; padding: 20px; margin: 20px; border-radius: 8px; font-family: monospace; }
+        .debug-log { font-family: monospace; font-size: 12px; color: #94a3b8; text-align: left; max-width: 400px; margin: 0 auto; }
+        .debug-entry { margin-bottom: 4px; border-left: 2px solid #334155; padding-left: 8px; }
+        .debug-success { border-color: #10b981; color: #6ee7b7; }
+        .debug-error { border-color: #ef4444; color: #fca5a5; }
     </style>
 </head>
 <body>
     <div id="root"></div>
-    
-    <!-- Globaler Fehler-Fänger für weißen Bildschirm -->
-    <script>
-      window.onerror = function(message, source, lineno, colno, error) {
-        document.getElementById('root').innerHTML = `
-          <div class="error-box">
-            <h3 class="font-bold text-lg mb-2">Kritischer Fehler (Browser/Netzwerk)</h3>
-            <p>${message}</p>
-            <p class="text-sm mt-2 opacity-75">Zeile: ${lineno}</p>
-            <div class="mt-4 text-sm bg-black/30 p-2 rounded">
-               <strong>Tipp:</strong> Wenn du diese Datei per Doppelklick geöffnet hast (file://), blockiert dein Browser wahrscheinlich die Verbindung.<br>
-               Versuche es mit einem lokalen Server (z.B. "Live Server" in VS Code) oder lade die Datei auf Netlify Drop hoch.
-            </div>
-          </div>
-        `;
-      };
-    </script>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect } from 'react';
+        import React, { useState, useEffect, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { initializeApp } from 'firebase/app';
         import { 
@@ -59,12 +45,12 @@
           doc, setDoc, deleteDoc, updateDoc, addDoc, getDoc 
         } from 'firebase/firestore';
         import { 
-          getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
+          getAuth, signInAnonymously, onAuthStateChanged 
         } from 'firebase/auth';
         import { 
           Shield, Grid, ShoppingCart, Calendar, Briefcase, 
           LogOut, UserPlus, Trash2, Check, X, User, Lock, ExternalLink, Pencil, Save,
-          Activity, Clock, FileText, LayoutList, Users, Timer, Settings, Globe, Loader, AlertTriangle
+          Activity, Clock, FileText, LayoutList, Users, Timer, Settings, Globe, Loader, AlertTriangle, RefreshCw
         } from 'lucide-react';
 
         // --- Basis Konfiguration (Defaults) ---
@@ -104,26 +90,27 @@
         ];
 
         // --- Firebase Konfiguration ---
-        const getFirebaseConfig = () => {
-            if (window.__firebase_config) {
-                return JSON.parse(window.__firebase_config);
-            }
-            // DEINE EINGEFÜGTEN DATEN:
-            return {
-                apiKey: "AIzaSyBVO3jh0d1FjC0smGcn88eXS16GI1S6PDE",
-                authDomain: "mabelle-hub.firebaseapp.com",
-                projectId: "mabelle-hub",
-                storageBucket: "mabelle-hub.firebasestorage.app",
-                messagingSenderId: "242799712815",
-                appId: "1:242799712815:web:9c7696ca5c73dc8c5b44da"
-            };
+        const firebaseConfig = {
+            apiKey: "AIzaSyBVO3jh0d1FjC0smGcn88eXS16GI1S6PDE",
+            authDomain: "mabelle-hub.firebaseapp.com",
+            projectId: "mabelle-hub",
+            storageBucket: "mabelle-hub.firebasestorage.app",
+            messagingSenderId: "242799712815",
+            appId: "1:242799712815:web:9c7696ca5c73dc8c5b44da"
         };
 
-        const firebaseConfig = getFirebaseConfig();
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = (typeof window.__app_id !== 'undefined') ? window.__app_id : 'mabelle-hub-default';
+        // Initialize Firebase safely
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.error("Firebase Init Error", e);
+            document.body.innerHTML = `<div style="padding:20px;color:red">Firebase Init Fehler: ${e.message}</div>`;
+        }
+        
+        const appId = 'mabelle-hub-live'; // Fester App ID für Live-Betrieb
 
         // --- Komponenten ---
 
@@ -199,8 +186,16 @@
           const [activeStaff, setActiveStaff] = useState(null); 
           const [view, setView] = useState('loading'); 
           const [error, setError] = useState('');
-          const [authError, setAuthError] = useState(''); // Spezieller Fehler für Start
           const [launchingApp, setLaunchingApp] = useState(null); 
+          
+          // Debugging State
+          const [debugLogs, setDebugLogs] = useState([{ msg: 'App gestartet...', type: 'info' }]);
+          const [showForceSetup, setShowForceSetup] = useState(false);
+
+          const addLog = (msg, type='info') => {
+             console.log(`[${type}] ${msg}`);
+             setDebugLogs(prev => [...prev, { msg, type }]);
+          };
           
           // Admin State
           const [formData, setFormData] = useState({ name: '', pin: '', isAdmin: false });
@@ -208,22 +203,41 @@
           const [adminTab, setAdminTab] = useState('staff'); 
           const [urlForm, setUrlForm] = useState({}); 
 
+          // --- Timeout für Force Setup ---
+          useEffect(() => {
+            const timer = setTimeout(() => {
+                if (view === 'loading') {
+                    addLog('Ladevorgang dauert ungewöhnlich lange...', 'error');
+                    setShowForceSetup(true);
+                }
+            }, 6000); // Nach 6 Sekunden Button zeigen
+            return () => clearTimeout(timer);
+          }, [view]);
+
           // --- Initialisierung ---
           useEffect(() => {
             const initAuth = async () => {
                 try {
-                    if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
-                        await signInWithCustomToken(auth, window.__initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
+                    addLog('Starte Authentifizierung...', 'info');
+                    // FIX: Nur noch Anonym anmelden, da wir eigene Config nutzen
+                    await signInAnonymously(auth);
+                    addLog('Authentifizierung erfolgreich!', 'success');
                 } catch (e) {
-                    console.error("Auth Error:", e);
-                    setAuthError(e.message);
+                    addLog('Auth FEHLER: ' + e.message, 'error');
+                    if (e.message.includes('operation-not-allowed')) {
+                        addLog('WICHTIG: "Anonyme Anmeldung" in Firebase Konsole aktivieren!', 'error');
+                    }
                 }
             };
             initAuth();
-            const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+            const unsubscribe = onAuthStateChanged(auth, (u) => {
+                if (u) {
+                    setUser(u);
+                    addLog(`User eingeloggt: ${u.uid.substring(0,5)}...`, 'success');
+                } else {
+                    addLog('User ausgeloggt / noch nicht da', 'info');
+                }
+            });
             return () => unsubscribe();
           }, []);
 
@@ -231,21 +245,29 @@
           useEffect(() => {
             if (!user) return;
             
-            // Fehlertoleranz beim Laden der Staff-Liste
+            addLog('Lade Mitarbeiter-Liste...', 'info');
+            
             let unsubStaff = () => {};
             try {
+                // Wir nutzen einen festen AppID Pfad für Standalone
                 const qStaff = query(collection(db, 'artifacts', appId, 'public', 'data', 'staff'));
+                
                 unsubStaff = onSnapshot(qStaff, (snapshot) => {
                   const staff = [];
                   snapshot.forEach(doc => staff.push({ id: doc.id, ...doc.data() }));
                   setStaffList(staff);
+                  addLog(`Daten geladen: ${staff.length} Mitarbeiter gefunden`, 'success');
+                  
                   if (view === 'loading') setView('login');
                 }, (err) => {
-                    console.error("DB Error:", err);
-                    setAuthError("Kein Zugriff auf Datenbank: " + err.message);
+                    addLog("DB Lese-Fehler: " + err.message, 'error');
+                    if (err.message.includes('permission') || err.message.includes('Missing or insufficient permissions')) {
+                         addLog("WICHTIG: Firestore Regeln prüfen! (Permisson Denied)", 'error');
+                         addLog("Gehe in Firebase Console -> Firestore Database -> Rules", 'info');
+                    }
                 });
             } catch(e) {
-                setAuthError("DB Init Error: " + e.message);
+                addLog("DB Init Critical Error: " + e.message, 'error');
             }
 
             let unsubConfig = () => {};
@@ -256,14 +278,14 @@
                     setCustomUrls(docSnap.data());
                     setUrlForm(docSnap.data()); 
                   }
-                }, (err) => console.log("Config laden fehlgeschlagen (nicht kritisch):", err));
+                }, (err) => addLog("URL Config Ladefehler (Ignorierbar)", 'info'));
             } catch(e) {}
 
             return () => {
               unsubStaff();
               unsubConfig();
             };
-          }, [user, view]);
+          }, [user]); // Entfernt 'view' aus dependency array um loops zu vermeiden
 
           // --- Logs laden ---
           useEffect(() => {
@@ -291,15 +313,22 @@
 
           // --- Handlers ---
           const handleCreateFirstAdmin = async () => {
-            if (!user) return;
+            if (!user) {
+                alert("Kein User eingeloggt! Auth Fehler prüfen.");
+                return;
+            }
             try {
+              addLog('Erstelle Admin...', 'info');
               await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', 'admin-001'), {
                 name: 'Administrator', pin: '0000', isAdmin: true,
                 permissions: ['manager', 'order', 'booking', 'timer'], createdAt: new Date().toISOString()
               });
-              window.location.reload(); 
+              // Force reload logic
+              setView('login');
+              // window.location.reload(); 
             } catch (e) {
-              setError('Fehler beim Erstellen: ' + e.message);
+              addLog('Fehler beim Erstellen: ' + e.message, 'error');
+              setError('Fehler: ' + e.message);
             }
           };
 
@@ -388,13 +417,24 @@
 
           if (view === 'loading') {
             return (
-              <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-amber-600 font-medium tracking-widest p-4 text-center">
-                <div className="mb-4">LÄDT MABELLE HUB...</div>
-                {authError && (
-                  <div className="bg-rose-950/50 border border-rose-900 p-4 rounded text-rose-300 max-w-md text-sm font-mono mt-4">
-                    <div className="flex items-center gap-2 mb-2 font-bold"><AlertTriangle size={16}/> Fehler aufgetreten:</div>
-                    {authError}
-                  </div>
+              <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-4 text-center">
+                <div className="mb-4 text-amber-600 font-medium tracking-widest animate-pulse">LÄDT MABELLE HUB...</div>
+                
+                <div className="debug-log">
+                    {debugLogs.map((log, i) => (
+                        <div key={i} className={`debug-entry ${log.type === 'error' ? 'debug-error' : log.type === 'success' ? 'debug-success' : ''}`}>
+                            {log.msg}
+                        </div>
+                    ))}
+                </div>
+
+                {showForceSetup && (
+                    <div className="mt-8">
+                        <p className="text-slate-500 mb-2 text-sm">Hängt es? Datenbank ist vielleicht leer.</p>
+                        <button onClick={handleCreateFirstAdmin} className="bg-slate-800 text-white px-4 py-2 rounded border border-slate-700 hover:bg-slate-700">
+                             ⚠️ Setup erzwingen (Admin anlegen)
+                        </button>
+                    </div>
                 )}
               </div>
             );
