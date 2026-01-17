@@ -3,350 +3,824 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MaBelle Hub</title>
+    <title>MABELLEManager</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Import Map: Offizielle Google-Server -->
     <script type="importmap">
     {
       "imports": {
         "react": "https://esm.sh/react@18.2.0",
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
-        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js",
-        "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js",
-        "lucide-react": "https://esm.sh/lucide-react@0.294.0"
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0"
       }
     }
     </script>
+    
+    <!-- Babel für JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>body { background-color: #020617; color: white; }</style>
+
+    <style>
+        body { font-family: sans-serif; }
+        .animate-pop { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    </style>
 </head>
-<body>
+<body class="bg-slate-100">
     <div id="root"></div>
+
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect } from 'react';
+        import React, { useState, useEffect, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
         import { initializeApp } from 'firebase/app';
-        import { getFirestore, collection, query, onSnapshot, doc, setDoc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import { Shield, Grid, ShoppingCart, Calendar, Briefcase, LogOut, UserPlus, Trash2, Check, X, User, Lock, ExternalLink, Pencil, Save, Activity, Clock, LayoutList, Users, Timer, Settings, Globe, Loader } from 'lucide-react';
+        import { getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc, addDoc, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
+        import { Users, Calendar as CalendarIcon, BarChart3, ChevronLeft, ChevronRight, AlertCircle, ShieldCheck, History, CalendarDays, Trash2, CheckCircle2, Plus, X, Check, Lock, Settings, Save, Edit3, KeyRound, RotateCcw, Send, BellRing, ArrowRightLeft, UserCog } from 'lucide-react';
 
-        const DEFAULT_APPS = [
-          { id: 'manager', name: 'MABELLE MANAGER', description: 'Verwaltung & Finanzen', defaultUrl: 'https://mabelle-manager.netlify.app', icon: Briefcase, color: 'bg-slate-700' },
-          { id: 'order', name: 'MABELLE ORDER', description: 'Bestellwesen & Lager', defaultUrl: 'https://mabelle-order.netlify.app', icon: ShoppingCart, color: 'bg-emerald-700' },
-          { id: 'booking', name: 'MABELLE BOOKING', description: 'Termine & Kunden', defaultUrl: 'https://mabelle-booking.netlify.app', icon: Calendar, color: 'bg-rose-700' },
-          { id: 'timer', name: 'MABELLE TIMER', description: 'Zeiterfassung & Stempeluhr', defaultUrl: 'https://mabelle-timer.netlify.app', icon: Timer, color: 'bg-indigo-700' }
-        ];
-
+        // --- FIREBASE CONFIG ---
         const firebaseConfig = {
-            apiKey: "AIzaSyBVO3jh0d1FjC0smGcn88eXS16GI1S6PDE",
-            authDomain: "mabelle-hub.firebaseapp.com",
-            projectId: "mabelle-hub",
-            storageBucket: "mabelle-hub.firebasestorage.app",
-            messagingSenderId: "242799712815",
-            appId: "1:242799712815:web:9c7696ca5c73dc8c5b44da"
+          apiKey: "AIzaSyA-1RMjw-kYkhEAWbCIahje0JoZQPeCsT4",
+          authDomain: "mabelle2-8b6c2.firebaseapp.com",
+          projectId: "mabelle2-8b6c2",
+          storageBucket: "mabelle2-8b6c2.firebasestorage.app",
+          messagingSenderId: "718760578004",
+          appId: "1:718760578004:web:cb4709e210c4849f33e441"
         };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = 'mabelle-hub-live';
+        const appId = "shop-manager-v1";
 
-        const PinPad = ({ onComplete, disabled }) => {
-          const [pin, setPin] = useState('');
-          const handleNum = (num) => {
-            if (disabled) return;
-            if (pin.length < 4) {
-              const newPin = pin + num;
-              setPin(newPin);
-              if (newPin.length === 4) setTimeout(() => { onComplete(newPin); setPin(''); }, 300);
-            }
-          };
-          return (
-            <div className="flex flex-col items-center justify-center p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xs mx-auto">
-              <div className="mb-6 flex gap-3 h-6">{[0, 1, 2, 3].map(i => <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${pin.length > i ? 'bg-amber-600 border-amber-600 scale-110' : 'border-slate-700'}`} />)}</div>
-              <div className="grid grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => <button key={num} type="button" onClick={() => handleNum(num)} disabled={disabled} className="w-16 h-16 rounded-full bg-slate-800 text-2xl font-semibold text-slate-200 hover:bg-slate-700 active:bg-slate-600 disabled:opacity-50">{num}</button>)}
-                <div className="w-16 h-16"></div>
-                <button type="button" onClick={() => handleNum(0)} disabled={disabled} className="w-16 h-16 rounded-full bg-slate-800 text-2xl font-semibold text-slate-200 hover:bg-slate-700 active:bg-slate-600 disabled:opacity-50">0</button>
-                <button type="button" onClick={() => setPin(pin.slice(0, -1))} disabled={disabled} className="w-16 h-16 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-800 disabled:opacity-50"><X size={28} /></button>
-              </div>
-            </div>
-          );
+        // --- CHEF TEMPLATES ---
+        const CHEF_TEMPLATES = [
+          { id: 'chef1', defaultName: 'Chef Alex', color: 'bg-blue-500', border: 'border-blue-500', text: 'text-blue-600', bgLight: 'bg-blue-50' }, 
+          { id: 'chef2', defaultName: 'Chef Sarah', color: 'bg-red-900', border: 'border-red-900', text: 'text-red-950', bgLight: 'bg-red-50' }, 
+          { id: 'chef3', defaultName: 'Chef Michael', color: 'bg-orange-600', border: 'border-orange-600', text: 'text-orange-700', bgLight: 'bg-orange-50' }, 
+          { id: 'chef4', defaultName: 'Chef Laura', color: 'bg-emerald-600', border: 'border-emerald-600', text: 'text-emerald-700', bgLight: 'bg-emerald-50' } 
+        ];
+
+        const DAYS_DE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+        const MONTHS_DE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+        const DEFAULT_ADMIN_PIN = "0303";
+
+        const formatDateId = (date) => {
+          const year = date.getFullYear();
+          const month =String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
         };
 
-        function MaBelleHub() {
-          const [user, setUser] = useState(null);
-          const [staffList, setStaffList] = useState([]);
-          const [logs, setLogs] = useState([]);
-          const [customUrls, setCustomUrls] = useState({});
-          const [activeStaff, setActiveStaff] = useState(null);
-          const [view, setView] = useState('loading');
-          const [error, setError] = useState('');
-          const [formData, setFormData] = useState({ name: '', pin: '', isAdmin: false });
-          const [editingId, setEditingId] = useState(null);
-          const [adminTab, setAdminTab] = useState('staff');
-          const [urlForm, setUrlForm] = useState({});
+        const isWeekend = (date) => {
+          const day = date.getDay();
+          return day === 5 || day === 6; 
+        };
 
-          // Authentifizierung
-          useEffect(() => { 
-            signInAnonymously(auth).catch(e => console.error(e)); 
-            return onAuthStateChanged(auth, setUser); 
+        // --- Main Component ---
+        function App() {
+          const [user, setUser] = useState(null);
+          const [activeChefId, setActiveChefId] = useState(null); 
+          const [isAdmin, setIsAdmin] = useState(false); 
+
+          const [currentDate, setCurrentDate] = useState(new Date());
+          const [shifts, setShifts] = useState({});
+          const [tasks, setTasks] = useState([]); 
+          const [loading, setLoading] = useState(true);
+          const [statsFilter, setStatsFilter] = useState('month'); 
+          
+          const [customNames, setCustomNames] = useState({});
+          const [showAdminSettings, setShowAdminSettings] = useState(false); 
+          const [tempNames, setTempNames] = useState({}); 
+
+          const [showPinEntry, setShowPinEntry] = useState(false);
+          const [pinInput, setPinInput] = useState('');
+          const [pinError, setPinError] = useState(false);
+
+          // User Login PIN State
+          const [userLoginState, setUserLoginState] = useState({ isOpen: false, chefId: null, attempt: '', error: false });
+
+          // Admin Modals
+          const [selectedShiftModal, setSelectedShiftModal] = useState(null); 
+          const [adminBookingModal, setAdminBookingModal] = useState(null);
+
+          const [notifications, setNotifications] = useState([]); 
+          const [showNotifications, setShowNotifications] = useState(false);
+          
+          const [swapOfferId, setSwapOfferId] = useState(''); 
+
+          const [newTaskText, setNewTaskText] = useState('');
+          const [newTaskAssignee, setNewTaskAssignee] = useState('all');
+
+          // Auth
+          useEffect(() => {
+            signInAnonymously(auth).catch((error) => alert("Auth Error: " + error.message));
+            return onAuthStateChanged(auth, setUser);
           }, []);
 
-          // Daten & Session Restore
+          // Data Sync
           useEffect(() => {
             if (!user) return;
             
-            const unsubStaff = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'staff')), (snap) => {
-              const staff = [];
-              snap.forEach(d => staff.push({ id: d.id, ...d.data() }));
-              setStaffList(staff);
-
-              // SESSION RESTORE LOGIK: Prüfen ob wir eingeloggt sein sollten
-              const savedUserId = sessionStorage.getItem('mabelle_hub_user_id');
-              
-              if (savedUserId && staff.length > 0) {
-                  // Versuch den User aus der Session wiederherzustellen
-                  const restoredUser = staff.find(s => s.id === savedUserId);
-                  if (restoredUser) {
-                      setActiveStaff(restoredUser);
-                      setView('dashboard');
-                  } else {
-                      // User existiert nicht mehr (wurde gelöscht während man eingeloggt war)
-                      sessionStorage.removeItem('mabelle_hub_user_id');
-                      if (view === 'loading') setView('login');
-                  }
-              } else if (activeStaff) {
-                  // Wir sind eingeloggt, Daten aktualisieren
-                  const updatedMe = staff.find(s => s.id === activeStaff.id);
-                  if (updatedMe) setActiveStaff(updatedMe);
-              } else {
-                  // Nicht eingeloggt
-                  if (view === 'loading') setView('login');
-              }
+            const unsubShifts = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'shifts'), (snapshot) => {
+              const data = {};
+              snapshot.forEach(doc => data[doc.id] = doc.data());
+              setShifts(data);
             });
 
-            const unsubConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'app_urls'), (snap) => {
-              if (snap.exists()) { setCustomUrls(snap.data()); setUrlForm(snap.data()); }
+            const unsubTasks = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), (snapshot) => {
+                const data = [];
+                snapshot.forEach(doc => data.push({id: doc.id, ...doc.data()}));
+                setTasks(data);
             });
-            return () => { unsubStaff(); unsubConfig(); };
-          }, [user]); 
 
+            const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'general'), (docSnap) => {
+                if (docSnap.exists()) setCustomNames(docSnap.data());
+            });
+
+            return () => { unsubShifts(); unsubTasks(); unsubSettings(); };
+          }, [user]);
+
+          // Auto-Delete Tasks
           useEffect(() => {
-            if (!user || !activeStaff?.isAdmin) return;
-            return onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'access_logs')), (snap) => {
-              const l = []; snap.forEach(d => l.push({ id: d.id, ...d.data() }));
-              setLogs(l.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
-            });
-          }, [user, activeStaff?.isAdmin]);
-
-          const logActivity = async (type, details, staffMember) => {
-            try {
-              const actor = staffMember || activeStaff;
-              if (actor) await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'access_logs'), {
-                type, details, userId: actor.id, userName: actor.name, timestamp: new Date().toISOString()
+              if (tasks.length === 0) return;
+              const now = new Date();
+              tasks.forEach(task => {
+                  if (task.completed && task.completedAt) {
+                      const completedDate = new Date(task.completedAt);
+                      const diffTime = Math.abs(now - completedDate);
+                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                      if (diffDays > 3) {
+                          deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', task.id))
+                            .catch(e => console.error("Auto-Delete failed", e));
+                      }
+                  }
               });
-            } catch (e) {}
-          };
+          }, [tasks]);
 
-          const handleGlobalPinLogin = (pin) => {
-            const found = staffList.find(s => s.pin === pin);
-            if (found) { 
-                setActiveStaff(found); 
-                setView('dashboard'); 
-                setError(''); 
-                // Session speichern!
-                sessionStorage.setItem('mabelle_hub_user_id', found.id);
-                logActivity('LOGIN', 'Login', found); 
-            }
-            else { setError('PIN falsch'); setTimeout(() => setError(''), 2000); }
-          };
-
-          const handleLogout = () => {
-            setActiveStaff(null);
-            setView('login');
-            setFormData({ name: '', pin: '', isAdmin: false }); 
-            setEditingId(null);
-            // Session löschen
-            sessionStorage.removeItem('mabelle_hub_user_id');
-          };
-
-          const handleAppLaunch = (appConf) => {
-            const targetUrl = customUrls[appConf.id] || appConf.defaultUrl;
-            logActivity('APP_ACCESS', `App: ${appConf.name}`);
-            window.open(targetUrl, '_blank');
-          };
-
-          const handleSaveStaff = async (e) => {
-            if(e) e.preventDefault(); // Stop Browser Reload
-            if (!formData.name || formData.pin.length < 4) return;
-            const exists = staffList.some(s => s.pin === formData.pin && s.id !== editingId);
-            if (exists) { alert("PIN belegt!"); return; }
-            
-            const data = { name: formData.name, pin: formData.pin, isAdmin: formData.isAdmin };
-            try {
-              if (editingId) { 
-                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', editingId), data); 
-                  logActivity('ADMIN', `Edit: ${formData.name}`); 
-              } else { 
-                data.permissions = formData.isAdmin ? ['manager', 'order', 'booking', 'timer'] : [];
-                data.createdAt = new Date().toISOString();
-                await setDoc(doc(collection(db, 'artifacts', appId, 'public', 'data', 'staff')), data); 
-                logActivity('ADMIN', `Neu: ${formData.name}`);
+          // Notifications
+          useEffect(() => {
+              if (!activeChefId || !shifts) return;
+              const myNotifications = Object.values(shifts).filter(shift => 
+                  shift.chefId === activeChefId && shift.requestFrom
+              );
+              setNotifications(myNotifications);
+              if (myNotifications.length > 0) {
+                  setShowNotifications(true);
               }
-              setFormData({ name: '', pin: '', isAdmin: false }); 
-              setEditingId(null);
-            } catch (e) { setError('Fehler'); }
+          }, [shifts, activeChefId]);
+
+          // Helpers
+          const activeChefs = useMemo(() => {
+              return CHEF_TEMPLATES.map(t => ({
+                  ...t,
+                  name: customNames[t.id] || t.defaultName,
+                  pin: customNames[t.id + '_pin'] || '' 
+              }));
+          }, [customNames]);
+
+          const myFutureShifts = useMemo(() => {
+              if (!activeChefId || !shifts) return [];
+              const today = new Date();
+              today.setHours(0,0,0,0);
+              return Object.values(shifts)
+                  .filter(s => s.chefId === activeChefId && new Date(s.date) >= today)
+                  .sort((a, b) => new Date(a.date) - new Date(b.date));
+          }, [shifts, activeChefId]);
+
+          // Admin Login Handlers
+          const handlePinSubmit = (e) => {
+              e.preventDefault();
+              const currentAdminPin = customNames.admin_pin || DEFAULT_ADMIN_PIN;
+              
+              if (pinInput === currentAdminPin) {
+                  setPinInput('');
+                  setPinError(false);
+                  setShowPinEntry(false);
+                  setIsAdmin(true); 
+              } else {
+                  setPinError(true);
+                  setPinInput('');
+              }
           };
 
-          const handleDeleteStaff = async (id, name, e) => {
-            if(e) { e.stopPropagation(); e.preventDefault(); } // Stop Browser Reload
-            if (id === activeStaff.id) return;
-            if(!confirm(`Möchtest du ${name} wirklich löschen?`)) return;
-            
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', id));
-            logActivity('ADMIN', `Gelöscht: ${name}`);
+          const openAdminSettings = () => {
+              const current = {};
+              CHEF_TEMPLATES.forEach(c => { 
+                  current[c.id] = customNames[c.id] || c.defaultName; 
+                  current[c.id + '_pin'] = customNames[c.id + '_pin'] || '';
+              });
+              current.admin_pin = customNames.admin_pin || DEFAULT_ADMIN_PIN;
+              setTempNames(current);
+              setShowAdminSettings(true);
           };
 
-          const togglePermission = async (id, appIdTarget, perms = [], e) => {
-            if(e) { e.stopPropagation(); e.preventDefault(); } // Stop Browser Reload
-            const newPerms = perms.includes(appIdTarget) ? perms.filter(p => p !== appIdTarget) : [...perms, appIdTarget];
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', id), { permissions: newPerms });
+          const saveNames = async () => {
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'general'), tempNames, { merge: true });
+              setShowAdminSettings(false);
           };
 
-          const handleSaveUrls = async (e) => {
-             if(e) e.preventDefault();
-             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'app_urls'), urlForm);
-             alert('Gespeichert');
+          // User Login Logic
+          const handleChefLoginClick = (chef) => {
+              if (chef.pin && chef.pin.trim() !== '') {
+                  setUserLoginState({ isOpen: true, chefId: chef.id, attempt: '', error: false });
+              } else {
+                  setActiveChefId(chef.id);
+                  setIsAdmin(false);
+              }
           };
 
-          if (view === 'loading') return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-amber-600 animate-pulse">LÄDT...</div>;
-          
-          if (staffList.length === 0) return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 p-4 text-center">
-              <Shield className="w-16 h-16 text-amber-600 mx-auto mb-4" />
-              <button type="button" onClick={async () => {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', 'admin-001'), { name: 'Admin', pin: '0000', isAdmin: true, permissions: ['manager', 'order', 'booking', 'timer'] });
-                window.location.reload();
-              }} className="bg-amber-600 text-white py-3 px-8 rounded-xl font-bold">START (ADMIN 0000)</button>
-            </div>
-          );
+          const submitUserPin = (e) => {
+              e.preventDefault();
+              const chef = activeChefs.find(c => c.id === userLoginState.chefId);
+              if (chef && userLoginState.attempt === chef.pin) {
+                  setActiveChefId(chef.id);
+                  setIsAdmin(false);
+                  setUserLoginState({ isOpen: false, chefId: null, attempt: '', error: false });
+              } else {
+                  setUserLoginState(prev => ({ ...prev, error: true, attempt: '' }));
+              }
+          };
 
-          if (view === 'login') return (
-            <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-              <div className="mb-10 text-center"><h1 className="text-5xl text-white tracking-widest mb-3"><span className="font-bold">MABELLE</span> <span className="font-normal text-amber-600">HUB</span></h1><p className="text-slate-500 text-xs">LOGIN</p></div>
-              <PinPad onComplete={handleGlobalPinLogin} disabled={false} />
-              {error && <div className="mt-8 text-rose-400 bg-rose-950/30 border border-rose-900 px-6 py-3 rounded-lg flex items-center gap-2"><Shield size={16}/> {error}</div>}
-            </div>
-          );
+          // --- Calendar Interaction ---
+          const handleDayClick = async (dayDate) => {
+            const dateId = formatDateId(dayDate);
+            const existingShift = shifts[dateId];
+            const dateString = dayDate.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+
+            // ADMIN MODE INTERACTION
+            if (isAdmin) {
+                if (existingShift) {
+                    setSelectedShiftModal({
+                        shift: existingShift,
+                        dateString: dateString,
+                        isAdminAction: true
+                    });
+                } else {
+                    setAdminBookingModal({
+                        dateId: dateId,
+                        dateString: dateString,
+                        isWeekend: isWeekend(dayDate)
+                    });
+                }
+                return;
+            }
+
+            // USER MODE INTERACTION
+            if (!activeChefId) return;
+            const chef = activeChefs.find(c => c.id === activeChefId);
+
+            if (existingShift) {
+                setSelectedShiftModal({
+                    shift: existingShift,
+                    dateString: dateString,
+                    isMine: existingShift.chefId === activeChefId,
+                    isAdminAction: false
+                });
+                setSwapOfferId(''); 
+            } else {
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                const maxBookingDate = new Date(today);
+                maxBookingDate.setDate(today.getDate() + 14); 
+
+                if (dayDate > maxBookingDate) {
+                    alert("Du kannst dich maximal 2 Wochen im Voraus eintragen.");
+                    return;
+                }
+
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', dateId), {
+                    date: dateId,
+                    chefId: chef.id,
+                    chefName: chef.name, 
+                    chefColor: chef.color,
+                    isWeekend: isWeekend(dayDate),
+                    timestamp: new Date().toISOString(),
+                    requestFrom: null,
+                    swapOfferDate: null
+                });
+            }
+          };
+
+          // --- Shift Actions ---
+          const deleteShift = async () => {
+            if (!selectedShiftModal) return;
+            try {
+              await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', selectedShiftModal.shift.date));
+            } catch (e) { console.error(e); }
+            setSelectedShiftModal(null);
+          };
+
+          const adminAssignShift = async (targetChefId) => {
+              if (!adminBookingModal) return;
+              const chef = activeChefs.find(c => c.id === targetChefId);
+              if (!chef) return;
+
+              try {
+                  await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'shifts', adminBookingModal.dateId), {
+                        date: adminBookingModal.dateId,
+                        chefId: chef.id,
+                        chefName: chef.name, 
+                        chefColor: chef.color,
+                        isWeekend: adminBookingModal.isWeekend,
+                        timestamp: new Date().toISOString(),
+                        requestFrom: null,
+                        swapOfferDate: null
+                  });
+              } catch(e) { console.error(e); }
+              setAdminBookingModal(null);
+          }
+
+          const sendSwapRequest = async () => {
+              if (!selectedShiftModal || !activeChefId) return;
+              if (swapOfferId === '') {
+                  alert("Bitte wähle eine Schicht zum Tauschen aus.");
+                  return;
+              }
+
+              const me = activeChefs.find(c => c.id === activeChefId);
+              try {
+                  const shiftRef = doc(db, 'artifacts', appId, 'public', 'data', 'shifts', selectedShiftModal.shift.date);
+                  await updateDoc(shiftRef, {
+                      requestFrom: activeChefId,
+                      requestFromName: me.name,
+                      swapOfferDate: swapOfferId 
+                  });
+                  alert("Tauschanfrage gesendet!");
+              } catch (e) { console.error(e); }
+              setSelectedShiftModal(null);
+          };
+
+          const acceptRequest = async (targetShift) => {
+              const requesterId = targetShift.requestFrom;
+              const offerDateId = targetShift.swapOfferDate; 
+              
+              if (!requesterId || !offerDateId) return;
+
+              const requester = activeChefs.find(c => c.id === requesterId);
+              const me = activeChefs.find(c => c.id === activeChefId);
+
+              const batch = writeBatch(db);
+
+              const targetRef = doc(db, 'artifacts', appId, 'public', 'data', 'shifts', targetShift.date);
+              batch.update(targetRef, {
+                  chefId: requester.id,
+                  chefName: requester.name,
+                  chefColor: requester.color,
+                  requestFrom: null,
+                  requestFromName: null,
+                  swapOfferDate: null
+              });
+
+              const offerRef = doc(db, 'artifacts', appId, 'public', 'data', 'shifts', offerDateId);
+              batch.update(offerRef, {
+                  chefId: me.id,
+                  chefName: me.name,
+                  chefColor: me.color,
+                  requestFrom: null,
+                  requestFromName: null,
+                  swapOfferDate: null
+              });
+
+              try {
+                  await batch.commit();
+              } catch(e) {
+                  console.error("Swap failed", e);
+                  alert("Fehler beim Tausch. Vielleicht wurde die angebotene Schicht bereits gelöscht?");
+              }
+          };
+
+          const declineRequest = async (shift) => {
+              try {
+                  const shiftRef = doc(db, 'artifacts', appId, 'public', 'data', 'shifts', shift.date);
+                  await updateDoc(shiftRef, {
+                      requestFrom: null,
+                      requestFromName: null,
+                      swapOfferDate: null
+                  });
+              } catch(e) { console.error(e); }
+          };
+
+          // --- Other Logic ---
+          const changeMonth = (offset) => {
+            const newDate = new Date(currentDate.setMonth(currentDate.getMonth() + offset));
+            setCurrentDate(new Date(newDate));
+          };
+
+          const handleAddTask = async (e) => {
+            e.preventDefault();
+            if (!newTaskText.trim()) return;
+            const creatorId = isAdmin ? 'admin' : activeChefId;
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), {
+                text: newTaskText.trim(),
+                assignedTo: newTaskAssignee, 
+                createdBy: creatorId,
+                createdAt: new Date().toISOString(),
+                completed: false
+            });
+            setNewTaskText('');
+          };
+
+          const toggleTask = async (task) => {
+              const taskRef = doc(db, 'artifacts', appId, 'public', 'data', 'tasks', task.id);
+              const completerId = isAdmin ? 'admin' : activeChefId;
+              await updateDoc(taskRef, {
+                  completed: !task.completed,
+                  completedAt: !task.completed ? new Date().toISOString() : null,
+                  completedBy: !task.completed ? completerId : null
+              });
+          };
+
+          const deleteTask = async (taskId) => {
+              if(confirm('Aufgabe wirklich löschen?')) {
+                  await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', taskId));
+              }
+          }
+
+          const stats = useMemo(() => {
+            const initialStats = activeChefs.reduce((acc, chef) => {
+              acc[chef.id] = { ...chef, total: 0, weekend: 0 };
+              return acc;
+            }, {});
+            const viewYear = currentDate.getFullYear();
+            const viewMonth = currentDate.getMonth();
+            const now = new Date();
+
+            Object.values(shifts).forEach(shift => {
+              if (!initialStats[shift.chefId]) return;
+              const shiftDate = new Date(shift.date);
+              let shouldCount = false;
+              if (statsFilter === 'month') shouldCount = shiftDate.getFullYear() === viewYear && shiftDate.getMonth() === viewMonth;
+              else if (statsFilter === '3months') shouldCount = Math.ceil(Math.abs(now - shiftDate) / (86400000)) <= 90;
+              else if (statsFilter === 'year') shouldCount = shiftDate.getFullYear() === viewYear;
+
+              if (shouldCount) {
+                 initialStats[shift.chefId].total += 1;
+                 if (shift.isWeekend) initialStats[shift.chefId].weekend += 1;
+              }
+            });
+            return Object.values(initialStats).sort((a, b) => b.total - a.total);
+          }, [shifts, currentDate, statsFilter, activeChefs]);
+
+          const getStatsLabel = () => {
+            if (statsFilter === 'month') return MONTHS_DE[currentDate.getMonth()];
+            if (statsFilter === '3months') return 'Letzte 90 Tage';
+            if (statsFilter === 'year') return `Jahr ${currentDate.getFullYear()}`;
+            return '';
+          };
+
+          const sortedTasks = useMemo(() => {
+            const open = tasks.filter(t => !t.completed).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            const done = tasks.filter(t => t.completed).sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+            return { open, done };
+          }, [tasks, activeChefId]);
+
+          const getCalendarDays = () => {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const days = [];
+            let startPadding = firstDay.getDay() - 1; 
+            if (startPadding === -1) startPadding = 6;
+            for (let i = 0; i < startPadding; i++) days.push({ type: 'empty', id: `empty-${i}` });
+            for (let i = 1; i <= lastDay.getDate(); i++) {
+              const date = new Date(year, month, i);
+              days.push({ type: 'day', date, id: formatDateId(date) });
+            }
+            return days;
+          };
+
+          const calendarDays = getCalendarDays();
+
+          // --- Render ---
+          if (!user) return <div className="min-h-screen flex items-center justify-center text-slate-500">Lade Anwendung...</div>;
+
+          if (!activeChefId && !isAdmin) {
+            return (
+              <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative">
+                <button onClick={() => { setShowPinEntry(true); setPinError(false); setPinInput(''); }} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"><Settings className="w-6 h-6" /></button>
+                <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center">
+                  <div className="flex justify-center mb-6"><div className="p-4 bg-blue-100 rounded-full"><ShieldCheck className="w-10 h-10 text-blue-600" /></div></div>
+                  <div className="mb-8"><h1 className="text-3xl font-black text-slate-900 tracking-tight">MABELLE</h1><p className="text-sm font-bold text-amber-700 uppercase tracking-[0.2em] mt-1">Manager Planer</p></div>
+                  <div className="grid grid-cols-1 gap-3">
+                    {activeChefs.map(chef => (
+                      <button key={chef.id} onClick={() => handleChefLoginClick(chef)} className="flex items-center p-4 border-2 border-slate-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group">
+                        <div className={`w-3 h-3 rounded-full ${chef.color} mr-4`}></div>
+                        <span className="font-semibold text-slate-700 group-hover:text-blue-700">{chef.name}</span>
+                        {chef.pin && <Lock className="ml-auto w-3 h-3 text-slate-300" />}
+                        {!chef.pin && <ChevronRight className="ml-auto w-4 h-4 text-slate-400" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* USER LOGIN PIN MODAL */}
+                {userLoginState.isOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-6">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-lg font-bold text-slate-800">Login: {activeChefs.find(c => c.id === userLoginState.chefId)?.name}</h3>
+                                <button onClick={() => setUserLoginState({isOpen:false, chefId:null, attempt:'', error:false})} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                            </div>
+                            <form onSubmit={submitUserPin}>
+                                <div className="mb-4">
+                                    <input type="password" inputMode="numeric" autoFocus value={userLoginState.attempt} onChange={(e) => setUserLoginState(prev => ({...prev, attempt: e.target.value, error: false}))} placeholder="PIN eingeben" className={`w-full p-3 text-center text-lg tracking-widest border-2 rounded-xl outline-none transition-colors ${userLoginState.error ? 'border-red-500 bg-red-50' : 'border-slate-200 focus:border-blue-500'}`} />
+                                    {userLoginState.error && <p className="text-red-500 text-xs mt-2 text-center font-medium">Falscher Code</p>}
+                                </div>
+                                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">Anmelden</button>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* ADMIN LOGIN MODAL */}
+                {showPinEntry && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-6">
+                            <div className="flex justify-between items-center mb-6"><div className="flex items-center gap-2"><KeyRound className="w-5 h-5 text-slate-500"/><h3 className="text-lg font-bold text-slate-800">Admin Login</h3></div><button onClick={() => setShowPinEntry(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button></div>
+                            <form onSubmit={handlePinSubmit}>
+                                <div className="mb-4"><input type="password" inputMode="numeric" autoFocus value={pinInput} onChange={(e) => {setPinInput(e.target.value); setPinError(false);}} placeholder="PIN eingeben" className={`w-full p-3 text-center text-lg tracking-widest border-2 rounded-xl outline-none transition-colors ${pinError ? 'border-red-500 bg-red-50' : 'border-slate-200 focus:border-blue-500'}`} />{pinError && <p className="text-red-500 text-xs mt-2 text-center font-medium">Falscher Code</p>}</div>
+                                <button type="submit" className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">Entsperren</button>
+                            </form>
+                        </div>
+                    </div>
+                )}
+              </div>
+            );
+          }
+
+          const activeChef = activeChefs.find(c => c.id === activeChefId);
 
           return (
-            <div className="min-h-screen bg-slate-950 text-slate-200">
-              <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10 shadow-lg px-6 h-20 flex items-center justify-between">
-                <div className="flex items-center gap-3"><div className="w-10 h-10 bg-gradient-to-br from-amber-600 to-amber-700 rounded-lg flex items-center justify-center text-slate-950 font-bold">M</div><span className="text-xl tracking-widest text-white"><span className="font-bold">MABELLE</span> <span className="font-normal text-amber-600">HUB</span></span></div>
-                <div className="flex items-center gap-6">
-                  <div className="text-right hidden sm:block"><div className="text-sm font-medium text-white">{activeStaff.name}</div><div className="text-[10px] uppercase tracking-wider text-amber-600">{activeStaff.isAdmin ? 'Admin' : 'Mitarbeiter'}</div></div>
-                  <button type="button" onClick={handleLogout} className="p-3 hover:bg-slate-800 rounded-full text-slate-500 hover:text-amber-500 transition-colors"><LogOut size={20} /></button>
+            <div className={`min-h-screen pb-24 ${isAdmin ? 'bg-orange-50' : 'bg-slate-100'}`}>
+              <header className="bg-white shadow-sm sticky top-0 z-10">
+                <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
+                  {isAdmin ? (
+                      <div className="flex items-center gap-2 text-orange-700 font-bold"><UserCog className="w-5 h-5" /><span>Administrator</span></div>
+                  ) : (
+                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-full ${activeChef?.color} flex items-center justify-center text-white font-bold text-sm shadow-sm`}>{activeChef?.name.charAt(0)}</div><div><p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Angemeldet als</p><p className="text-sm font-bold text-slate-800 leading-tight">{activeChef?.name}</p></div></div>
+                  )}
+                  <div className="flex items-center gap-2">
+                      {isAdmin && (
+                          <button onClick={openAdminSettings} className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"><Settings className="w-4 h-4" /></button>
+                      )}
+                      <button onClick={() => { setActiveChefId(null); setIsAdmin(false); }} className="px-4 py-2 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors">Abmelden</button>
+                  </div>
                 </div>
               </header>
-              <main className="max-w-7xl mx-auto p-6 py-10">
-                <h2 className="text-xl font-medium text-white mb-8 flex items-center gap-3"><span className="p-2 bg-slate-800 rounded-lg text-amber-500"><Grid size={20} /></span> <span className="tracking-wide">APPS</span></h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-                  {DEFAULT_APPS.map(app => {
-                    const hasAccess = activeStaff.isAdmin || (activeStaff.permissions || []).includes(app.id);
-                    if (!hasAccess) return null;
-                    const Icon = app.icon;
-                    return (
-                      <button key={app.id} type="button" onClick={() => handleAppLaunch(app)} className="text-left w-full block bg-slate-900 rounded-2xl shadow-lg border border-slate-800 hover:border-amber-600/50 hover:-translate-y-1 transition-all overflow-hidden group relative">
-                        <div className={`h-32 ${app.color} flex items-center justify-center text-white/90 relative overflow-hidden`}>
-                          <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors"></div>
-                          <Icon size={48} className="opacity-90 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-500 drop-shadow-md" />
+
+              <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+                
+                {/* --- NOTIFICATIONS --- */}
+                {showNotifications && !isAdmin && (
+                    <div className="bg-white border-l-4 border-blue-500 rounded-lg shadow-md p-4 mb-4 animate-pop">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2"><BellRing className="w-5 h-5 text-blue-500" /> Tauschanfragen</h3>
+                            <button onClick={() => setShowNotifications(false)}><X className="w-4 h-4 text-slate-400" /></button>
                         </div>
-                        <div className="p-6">
-                          <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2 group-hover:text-amber-500">
-                            {app.name} <ExternalLink size={14} className="text-slate-600 group-hover:text-amber-500/50" />
-                          </h3>
-                          <p className="text-slate-400 text-xs">{app.description}</p>
+                        <div className="space-y-3">
+                            {notifications.map(shift => {
+                                const requester = activeChefs.find(c => c.id === shift.requestFrom);
+                                const dateStr = new Date(shift.date).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+                                const offerDateStr = shift.swapOfferDate ? new Date(shift.swapOfferDate).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' }) : "---";
+                                return (
+                                    <div key={shift.date} className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                        <p className="text-sm text-slate-700 mb-2"><span className="font-bold text-slate-900">{shift.requestFromName || 'Jemand'}</span> möchte deine Schicht am <span className="font-bold">{dateStr}</span> haben.</p>
+                                        <p className="text-xs text-blue-600 font-bold mb-3 flex items-center gap-1"><ArrowRightLeft className="w-3 h-3"/> Er bietet dafür: <span className="bg-blue-100 px-1 rounded">{offerDateStr}</span></p>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => acceptRequest(shift)} className="flex-1 bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2 rounded shadow-sm">Tausch annehmen</button>
+                                            <button onClick={() => declineRequest(shift)} className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-bold py-2 rounded">Ablehnen</button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                {activeStaff.isAdmin && (
-                  <div className="border-t border-slate-800 pt-10">
-                    <div className="flex gap-4 mb-6">
-                       {['staff', 'apps', 'logs'].map(tab => (
-                         <button key={tab} type="button" onClick={() => setAdminTab(tab)} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${adminTab === tab ? 'bg-amber-600 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white'}`}>
-                           {tab === 'staff' && <Users size={18}/>} {tab === 'apps' && <Settings size={18}/>} {tab === 'logs' && <LayoutList size={18}/>} <span className="capitalize">{tab === 'staff' ? 'Mitarbeiter' : tab}</span>
-                         </button>
-                       ))}
                     </div>
-                    <div className="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 overflow-hidden min-h-[400px]">
-                      {adminTab === 'staff' && (
-                        <>
-                          <form onSubmit={handleSaveStaff} className={`p-8 border-b border-slate-800 flex flex-wrap gap-6 items-end ${editingId ? 'bg-amber-900/10' : ''}`}>
-                            <div className="flex-1 min-w-[200px]"><label className="block text-xs font-bold text-amber-600 mb-2">Name</label><input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white" placeholder="Name" /></div>
-                            <div className="w-32"><label className="block text-xs font-bold text-amber-600 mb-2">PIN</label><input type="text" maxLength={4} value={formData.pin} onChange={e => setFormData({...formData, pin: e.target.value.replace(/\D/g,'')})} className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white text-center" placeholder="0000" /></div>
-                            <div className="flex items-center gap-2 h-12"><input type="checkbox" checked={formData.isAdmin} onChange={e => setFormData({...formData, isAdmin: e.target.checked})} className="h-5 w-5 accent-amber-600" /> <span className="text-sm text-slate-300">Admin</span></div>
-                            <div className="flex gap-2">
-                              {editingId && <button type="button" onClick={() => { setFormData({ name: '', pin: '', isAdmin: false }); setEditingId(null); }} className="bg-slate-800 text-slate-400 px-4 py-3 rounded-xl font-bold">X</button>}
-                              <button type="submit" disabled={!formData.name || formData.pin.length < 4} className="bg-amber-600 text-slate-950 px-8 py-3 rounded-xl font-bold disabled:opacity-30">{editingId ? 'SPEICHERN' : 'ANLEGEN'}</button>
-                            </div>
-                          </form>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                              <thead className="bg-slate-950 text-[10px] uppercase text-slate-500 border-b border-slate-800"><tr><th className="px-6 py-4">Name</th><th className="px-4 py-4 text-center">Manager</th><th className="px-4 py-4 text-center">Order</th><th className="px-4 py-4 text-center">Booking</th><th className="px-4 py-4 text-center">Timer</th><th className="px-6 py-4 text-right">Edit</th></tr></thead>
-                              <tbody className="divide-y divide-slate-800">
-                                {staffList.map(s => (
-                                  <tr key={s.id} className="hover:bg-slate-800/30">
-                                    <td className="px-6 py-4"><div className="font-bold text-white">{s.name}</div><div className="text-xs text-slate-500">PIN: {s.pin} {s.isAdmin && <span className="text-amber-600 ml-1">ADMIN</span>}</div></td>
-                                    {DEFAULT_APPS.map(a => <td key={a.id} className="px-4 py-4 text-center"><button type="button" onClick={(e) => togglePermission(s.id, a.id, s.permissions, e)} disabled={s.isAdmin} className={`w-8 h-8 rounded flex items-center justify-center mx-auto ${s.isAdmin || (s.permissions||[]).includes(a.id) ? 'bg-amber-900/30 text-amber-500 border border-amber-700/50' : 'bg-slate-800 text-slate-600'}`}><Check size={16}/></button></td>)}
-                                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                      <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setFormData({ name: s.name, pin: s.pin, isAdmin: s.isAdmin || false }); setEditingId(s.id); window.scrollTo({top:0, behavior:'smooth'}); }} className="p-2 text-amber-500 hover:bg-slate-800 rounded"><Pencil size={18}/></button>
-                                      <button type="button" onClick={(e) => handleDeleteStaff(s.id, s.name, e)} disabled={s.id === activeStaff.id} className="p-2 text-rose-500 hover:bg-rose-950/30 rounded disabled:opacity-20"><Trash2 size={18}/></button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </>
-                      )}
-                      {adminTab === 'apps' && (
-                        <div className="p-8 space-y-4 max-w-2xl">
-                           {DEFAULT_APPS.map(a => (
-                             <div key={a.id} className="flex gap-4 items-center bg-slate-950 p-4 rounded border border-slate-800">
-                               <div className={`p-2 rounded ${a.color}`}><a.icon size={20}/></div>
-                               <div className="flex-1"><label className="text-xs text-slate-500 block mb-1">{a.name} URL</label><input type="text" value={urlForm[a.id] || a.defaultUrl} onChange={e => setUrlForm({...urlForm, [a.id]: e.target.value})} className="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded text-sm"/></div>
-                             </div>
-                           ))}
-                           <button type="button" onClick={handleSaveUrls} className="bg-amber-600 text-slate-950 px-6 py-2 rounded font-bold">URLS SPEICHERN</button>
-                        </div>
-                      )}
-                      {adminTab === 'logs' && (
-                        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                          <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-950 text-slate-500 sticky top-0"><tr><th className="px-6 py-3">Zeit</th><th className="px-6 py-3">Wer</th><th className="px-6 py-3">Was</th></tr></thead>
-                            <tbody className="divide-y divide-slate-800">
-                              {logs.map(l => (
-                                <tr key={l.id} className="hover:bg-slate-800/30">
-                                  <td className="px-6 py-3 text-slate-400 font-mono">{new Date(l.timestamp).toLocaleString('de-DE')}</td>
-                                  <td className="px-6 py-3 text-white">{l.userName}</td>
-                                  <td className="px-6 py-3 text-slate-300">{l.details}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                )}
+
+                <section className="bg-white rounded-2xl shadow-sm p-4 sm:p-5 border border-slate-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+                    <div className="flex items-center gap-2"><BarChart3 className="w-5 h-5 text-slate-600" /><h2 className="font-bold text-slate-800">Fairness: {getStatsLabel()}</h2></div>
+                    <div className="flex bg-slate-100 p-1 rounded-lg self-start sm:self-auto">
+                      <button onClick={() => setStatsFilter('month')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${statsFilter === 'month' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Monat</button>
+                      <button onClick={() => setStatsFilter('3months')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${statsFilter === '3months' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>3 Mon.</button>
+                      <button onClick={() => setStatsFilter('year')} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${statsFilter === 'year' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Jahr</button>
                     </div>
                   </div>
-                )}
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs sm:text-sm">
+                    <div className="text-left font-semibold text-slate-400 uppercase tracking-wider pb-2">Name</div><div className="font-semibold text-slate-400 uppercase tracking-wider pb-2">Total</div><div className="font-semibold text-orange-400 uppercase tracking-wider pb-2">Fr/Sa</div><div className="font-semibold text-slate-400 uppercase tracking-wider pb-2">Status</div>
+                  </div>
+                  <div className="space-y-3">
+                    {stats.map((stat, idx) => {
+                      let highWeekendThreshold = statsFilter === 'year' ? 30 : statsFilter === '3months' ? 8 : 3;
+                      return (
+                      <div key={idx} className="grid grid-cols-4 gap-2 items-center bg-slate-50 p-2 rounded-lg">
+                        <div className="text-left font-medium flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${stat.color}`}></div><span className="truncate">{stat.name}</span></div>
+                        <div className="font-bold text-slate-700">{stat.total}</div>
+                        <div className={`font-bold ${stat.weekend >= highWeekendThreshold ? 'text-red-500' : 'text-orange-500'}`}>{stat.weekend}</div>
+                        <div>{stat.weekend >= highWeekendThreshold ? (<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Viel</span>) : (<span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">OK</span>)}</div>
+                      </div>
+                    )})}
+                  </div>
+                </section>
+
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+                    <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-100 rounded-full"><ChevronLeft className="w-5 h-5 text-slate-600" /></button>
+                    <h2 className="text-lg font-bold text-slate-800">{MONTHS_DE[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
+                    <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-100 rounded-full"><ChevronRight className="w-5 h-5 text-slate-600" /></button>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+                            {DAYS_DE.map((day, i) => (<div key={day} className={`py-3 text-center text-xs font-bold ${ (i === 4 || i === 5) ? 'text-orange-600' : 'text-slate-500'}`}>{day}</div>))}
+                        </div>
+                        <div className="grid grid-cols-7">
+                            {calendarDays.map((item, index) => {
+                            if (item.type === 'empty') return <div key={item.id} className="bg-slate-50/50 border-b border-r border-slate-100 min-h-[80px]"></div>;
+                            
+                            const dateId = formatDateId(item.date);
+                            const shift = shifts[dateId];
+                            const isToday = formatDateId(new Date()) === dateId;
+                            
+                            return (
+                                <button key={item.id} onClick={() => handleDayClick(item.date)} className={`relative min-h-[80px] p-1 border-b border-r border-slate-100 text-left transition-colors ${isToday && !isAdmin ? 'bg-blue-50/50' : ''} ${isWeekend(item.date) ? 'bg-orange-50/30' : ''} hover:bg-slate-50 ${isAdmin ? 'cursor-cell' : ''}`}>
+                                <span className={`text-xs font-medium block mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? 'bg-blue-600 text-white' : 'text-slate-400'} ${isWeekend(item.date) && !isToday ? 'text-orange-400' : ''}`}>{item.date.getDate()}</span>
+                                {shift ? (
+                                    <div className={`text-xs p-1.5 rounded-md text-white font-medium shadow-sm relative overflow-hidden ${shift.chefColor}`}>
+                                    {shift.requestFrom && (<div className="absolute right-0 top-0 w-2 h-2 bg-white rounded-full m-1 animate-pulse"></div>)}
+                                    {(!isAdmin && shift.chefId === activeChefId) ? 'Ich' : (shift.chefName.split(' ')[1] || shift.chefName)}
+                                    </div>
+                                ) : (
+                                    <div className="h-full w-full flex items-center justify-center opacity-0 hover:opacity-100"><span className="text-[10px] uppercase font-bold text-slate-300 tracking-tighter">{(isAdmin) ? 'Setzen' : '+ Übernehmen'}</span></div>
+                                )}
+                                {isWeekend(item.date) && !shift && (<div className="absolute bottom-1 right-1"><AlertCircle className="w-3 h-3 text-orange-200" /></div>)}
+                                </button>
+                            );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                        <div className="flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-blue-600" /><h2 className="font-bold text-slate-800">Team Aufgaben</h2></div>
+                        <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{sortedTasks.open.length} Offen</span>
+                    </div>
+                    <div className="p-4 border-b border-slate-100">
+                        <form onSubmit={handleAddTask} className="flex flex-col gap-3">
+                            <input type="text" placeholder="Neue Aufgabe..." value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                            <div className="flex gap-2">
+                                <select value={newTaskAssignee} onChange={(e) => setNewTaskAssignee(e.target.value)} className="p-2 border border-slate-200 rounded-xl text-sm bg-white flex-1 focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <option value="all">Für Alle</option>{activeChefs.map(c => <option key={c.id} value={c.id}>An: {c.name}</option>)}
+                                </select>
+                                <button type="submit" disabled={!newTaskText.trim()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-xl flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors"><Plus className="w-5 h-5" /></button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    {/* OPEN TASKS */}
+                    <div className="divide-y divide-slate-100">
+                        {sortedTasks.open.length === 0 ? (<div className="p-8 text-center text-slate-400 text-sm">Keine offenen Aufgaben. Sauber! 🎉</div>) : (sortedTasks.open.map(task => {
+                                const assignedChef = activeChefs.find(c => c.id === task.assignedTo);
+                                const isMyTask = task.assignedTo === activeChefId;
+                                const isAll = task.assignedTo === 'all';
+                                const canComplete = isAll || isMyTask || isAdmin;
+                                const canDelete = isAll || isMyTask || isAdmin || task.createdBy === activeChefId;
+
+                                return (
+                                    <div key={task.id} className={`p-4 flex items-center gap-3 hover:bg-slate-50 transition-colors ${isMyTask ? 'bg-blue-50/30' : ''}`}>
+                                        <div className="flex-1 min-w-0"><p className={`text-sm text-slate-800 font-medium ${isMyTask ? 'text-blue-900' : ''}`}>{task.text}</p><div className="flex items-center gap-2 mt-1">{isAll ? (<span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">Alle</span>) : (<span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex items-center gap-1 ${assignedChef?.bgLight} ${assignedChef?.text}`}>{assignedChef?.name}</span>)}{isMyTask && <span className="text-[10px] text-blue-600 font-bold">• Deine Aufgabe</span>}</div></div>
+                                        <div className="flex items-center gap-2">
+                                            {canComplete ? (<button onClick={() => toggleTask(task)} className="bg-green-100 hover:bg-green-200 text-green-700 border border-green-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm"><Check className="w-3 h-3" /> Erledigt</button>) : (<div className="text-slate-300 p-2" title="Nur der zugewiesene Chef kann dies erledigen"><Lock className="w-4 h-4" /></div>)}
+                                            {canDelete && <button onClick={() => deleteTask(task.id)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors" title="Löschen"><Trash2 className="w-4 h-4" /></button>}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {/* COMPLETED TASKS */}
+                    {sortedTasks.done.length > 0 && (
+                        <div className="bg-slate-50 border-t border-slate-200">
+                            <div className="px-4 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center">
+                                <span>Kürzlich erledigt (max. 3 Tage)</span>
+                            </div>
+                            <div className="divide-y divide-slate-100/50">
+                                {sortedTasks.done.map(task => {
+                                    const doneByChef = activeChefs.find(c => c.id === task.completedBy);
+                                    return (
+                                        <div key={task.id} className="px-4 py-3 flex items-center gap-3 group">
+                                            <button onClick={() => toggleTask(task)} className="w-5 h-5 flex items-center justify-center rounded-full border border-slate-200 text-slate-300 hover:text-blue-600 hover:border-blue-600 hover:bg-white transition-all bg-white" title="Wiederherstellen"><RotateCcw className="w-3 h-3" /></button>
+                                            <div className="flex-1 text-xs text-slate-400 line-through decoration-slate-300 group-hover:text-slate-500 transition-colors">{task.text}</div>
+                                            {doneByChef && (<div className={`w-5 h-5 rounded-full text-[10px] text-white flex items-center justify-center grayscale opacity-50 group-hover:grayscale-0 group-hover:opacity-100 transition-all ${doneByChef.color}`} title={`Erledigt von ${doneByChef.name}`}>{doneByChef.name.charAt(0)}</div>)}
+                                            <button onClick={() => deleteTask(task.id)} className="text-slate-300 hover:text-red-500 transition-colors ml-2" title="Endgültig löschen"><Trash2 className="w-3 h-3" /></button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </section>
               </main>
+
+              {/* ADMIN SETTINGS MODAL */}
+                {showAdminSettings && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 max-h-[90vh] overflow-y-auto">
+                            <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800">Einstellungen</h3><button onClick={() => setShowAdminSettings(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button></div>
+                            
+                            <div className="mb-6 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1"><KeyRound className="w-3 h-3"/> Admin Master-PIN</h4>
+                                <input type="text" value={tempNames.admin_pin || ''} onChange={(e) => setTempNames(prev => ({...prev, admin_pin: e.target.value}))} placeholder={DEFAULT_ADMIN_PIN} className="w-full p-2 border border-slate-200 rounded-lg text-sm text-center tracking-widest font-mono focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Benutzer verwalten</h4>
+                            <div className="space-y-3 mb-6">
+                                {CHEF_TEMPLATES.map(chef => (
+                                    <div key={chef.id} className="flex items-center gap-2">
+                                        <div className={`w-3 h-3 rounded-full ${chef.color} flex-shrink-0`}></div>
+                                        <input type="text" value={tempNames[chef.id] || ''} onChange={(e) => setTempNames(prev => ({...prev, [chef.id]: e.target.value}))} placeholder={chef.defaultName} className="flex-1 p-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
+                                        <input type="text" value={tempNames[chef.id + '_pin'] || ''} onChange={(e) => setTempNames(prev => ({...prev, [chef.id + '_pin']: e.target.value}))} placeholder="PIN" className="w-16 p-2 border border-slate-200 rounded-lg text-xs text-center focus:ring-2 focus:ring-blue-500 outline-none" />
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={saveNames} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl flex items-center justify-center gap-2 mb-6"><Save className="w-4 h-4" /> Speichern</button>
+                        </div>
+                    </div>
+                )}
+
+              {/* ADMIN BOOKING MODAL (Select Chef) */}
+              {adminBookingModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+                      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+                          <div className="flex justify-between items-center mb-4">
+                              <div><h3 className="text-lg font-bold text-slate-800">Schicht eintragen</h3><p className="text-xs text-slate-500">{adminBookingModal.dateString}</p></div>
+                              <button onClick={() => setAdminBookingModal(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2">
+                              {activeChefs.map(chef => (
+                                  <button key={chef.id} onClick={() => adminAssignShift(chef.id)} className="flex items-center p-3 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors">
+                                      <div className={`w-3 h-3 rounded-full ${chef.color} mr-3`}></div><span className="font-medium text-slate-700">{chef.name}</span><Plus className="ml-auto w-4 h-4 text-slate-400" />
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                  </div>
+              )}
+
+              {/* SHIFT ACTION MODAL (User & Admin) */}
+              {selectedShiftModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+                        <div className="flex flex-col items-center text-center gap-4">
+                            {/* ADMIN MODE ACTIONS */}
+                            {selectedShiftModal.isAdminAction ? (
+                                <>
+                                    <div className="p-3 bg-slate-800 rounded-full"><UserCog className="w-8 h-8 text-white" /></div>
+                                    <div><h3 className="text-lg font-bold text-slate-800">Schicht verwalten</h3><p className="text-sm text-slate-500 mt-1">{selectedShiftModal.shift.chefName} am {selectedShiftModal.dateString}</p></div>
+                                    <button onClick={deleteShift} className="w-full py-3 px-4 bg-white border-2 border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200 font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"><Trash2 className="w-4 h-4" /> Schicht löschen</button>
+                                </>
+                            ) : (
+                                /* USER MODE ACTIONS */
+                                selectedShiftModal.isMine ? (
+                                    <>
+                                        <div className="p-3 bg-blue-100 rounded-full"><Settings className="w-8 h-8 text-blue-600" /></div>
+                                        <div><h3 className="text-lg font-bold text-slate-800">Deine Schicht verwalten</h3><p className="text-sm text-slate-500 mt-1">{selectedShiftModal.dateString}</p></div>
+                                        <button onClick={deleteShift} className="w-full py-3 px-4 bg-white border-2 border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200 font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"><Trash2 className="w-4 h-4" /> Löschen</button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="p-3 bg-orange-100 rounded-full"><ArrowRightLeft className="w-8 h-8 text-orange-600" /></div>
+                                        <div><h3 className="text-lg font-bold text-slate-800">Tausch vorschlagen</h3><p className="text-sm text-slate-500 mt-1">für {selectedShiftModal.shift.chefName} am {selectedShiftModal.dateString}</p></div>
+                                        <div className="w-full text-left">
+                                            <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Biete deine Schicht:</label>
+                                            <select value={swapOfferId} onChange={(e) => setSwapOfferId(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-500 mb-4">
+                                                <option value="">-- Wähle eine Schicht --</option>
+                                                {myFutureShifts.map(s => (<option key={s.date} value={s.date}>{new Date(s.date).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })} {s.isWeekend ? ' (Wochenende)' : ''}</option>))}
+                                            </select>
+                                        </div>
+                                        <button onClick={sendSwapRequest} className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">Tauschanfrage senden</button>
+                                    </>
+                                )
+                            )}
+                            <button onClick={() => setSelectedShiftModal(null)} className="text-slate-400 text-xs hover:text-slate-600 mt-2">Abbrechen</button>
+                        </div>
+                    </div>
+                </div>
+              )}
             </div>
           );
         }
-        createRoot(document.getElementById('root')).render(<MaBelleHub />);
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
