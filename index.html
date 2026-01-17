@@ -26,7 +26,7 @@
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
         import { initializeApp } from 'firebase/app';
-        import { getFirestore, collection, query, onSnapshot, doc, setDoc, deleteDoc, updateDoc, addDoc, getDoc } from 'firebase/firestore';
+        import { getFirestore, collection, query, onSnapshot, doc, setDoc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
         import { Shield, Grid, ShoppingCart, Calendar, Briefcase, LogOut, UserPlus, Trash2, Check, X, User, Lock, ExternalLink, Pencil, Save, Activity, Clock, LayoutList, Users, Timer, Settings, Globe, Loader } from 'lucide-react';
 
@@ -87,28 +87,50 @@
           const [adminTab, setAdminTab] = useState('staff');
           const [urlForm, setUrlForm] = useState({});
 
-          useEffect(() => { signInAnonymously(auth).catch(e => console.error(e)); return onAuthStateChanged(auth, setUser); }, []);
+          // Authentifizierung
+          useEffect(() => { 
+            signInAnonymously(auth).catch(e => console.error(e)); 
+            return onAuthStateChanged(auth, setUser); 
+          }, []);
 
+          // Daten & Session Restore
           useEffect(() => {
             if (!user) return;
+            
             const unsubStaff = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'staff')), (snap) => {
               const staff = [];
               snap.forEach(d => staff.push({ id: d.id, ...d.data() }));
               setStaffList(staff);
-              // Nur wenn wir noch im Loading-Status sind, wechseln wir.
-              if (view === 'loading') setView('login');
+
+              // SESSION RESTORE LOGIK: Prüfen ob wir eingeloggt sein sollten
+              const savedUserId = sessionStorage.getItem('mabelle_hub_user_id');
               
-              // Aktualisiere den aktiven User, ohne die View zu resetten
-              if (activeStaff) {
+              if (savedUserId && staff.length > 0) {
+                  // Versuch den User aus der Session wiederherzustellen
+                  const restoredUser = staff.find(s => s.id === savedUserId);
+                  if (restoredUser) {
+                      setActiveStaff(restoredUser);
+                      setView('dashboard');
+                  } else {
+                      // User existiert nicht mehr (wurde gelöscht während man eingeloggt war)
+                      sessionStorage.removeItem('mabelle_hub_user_id');
+                      if (view === 'loading') setView('login');
+                  }
+              } else if (activeStaff) {
+                  // Wir sind eingeloggt, Daten aktualisieren
                   const updatedMe = staff.find(s => s.id === activeStaff.id);
                   if (updatedMe) setActiveStaff(updatedMe);
+              } else {
+                  // Nicht eingeloggt
+                  if (view === 'loading') setView('login');
               }
             });
+
             const unsubConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'app_urls'), (snap) => {
               if (snap.exists()) { setCustomUrls(snap.data()); setUrlForm(snap.data()); }
             });
             return () => { unsubStaff(); unsubConfig(); };
-          }, [user]); // Abhängigkeit reduziert, um unnötige Reloads zu vermeiden
+          }, [user]); 
 
           useEffect(() => {
             if (!user || !activeStaff?.isAdmin) return;
@@ -129,11 +151,26 @@
 
           const handleGlobalPinLogin = (pin) => {
             const found = staffList.find(s => s.pin === pin);
-            if (found) { setActiveStaff(found); setView('dashboard'); setError(''); logActivity('LOGIN', 'Login', found); }
+            if (found) { 
+                setActiveStaff(found); 
+                setView('dashboard'); 
+                setError(''); 
+                // Session speichern!
+                sessionStorage.setItem('mabelle_hub_user_id', found.id);
+                logActivity('LOGIN', 'Login', found); 
+            }
             else { setError('PIN falsch'); setTimeout(() => setError(''), 2000); }
           };
 
-          // SSO ENTFERNT: Nur noch einfache Weiterleitung
+          const handleLogout = () => {
+            setActiveStaff(null);
+            setView('login');
+            setFormData({ name: '', pin: '', isAdmin: false }); 
+            setEditingId(null);
+            // Session löschen
+            sessionStorage.removeItem('mabelle_hub_user_id');
+          };
+
           const handleAppLaunch = (appConf) => {
             const targetUrl = customUrls[appConf.id] || appConf.defaultUrl;
             logActivity('APP_ACCESS', `App: ${appConf.name}`);
@@ -141,38 +178,44 @@
           };
 
           const handleSaveStaff = async (e) => {
-            if (e) e.preventDefault();
+            if(e) e.preventDefault(); // Stop Browser Reload
             if (!formData.name || formData.pin.length < 4) return;
             const exists = staffList.some(s => s.pin === formData.pin && s.id !== editingId);
             if (exists) { alert("PIN belegt!"); return; }
+            
             const data = { name: formData.name, pin: formData.pin, isAdmin: formData.isAdmin };
             try {
-              if (editingId) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', editingId), data); logActivity('ADMIN', `Edit: ${formData.name}`); }
-              else { 
+              if (editingId) { 
+                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', editingId), data); 
+                  logActivity('ADMIN', `Edit: ${formData.name}`); 
+              } else { 
                 data.permissions = formData.isAdmin ? ['manager', 'order', 'booking', 'timer'] : [];
                 data.createdAt = new Date().toISOString();
                 await setDoc(doc(collection(db, 'artifacts', appId, 'public', 'data', 'staff')), data); 
                 logActivity('ADMIN', `Neu: ${formData.name}`);
               }
-              setFormData({ name: '', pin: '', isAdmin: false }); setEditingId(null);
+              setFormData({ name: '', pin: '', isAdmin: false }); 
+              setEditingId(null);
             } catch (e) { setError('Fehler'); }
           };
 
           const handleDeleteStaff = async (id, name, e) => {
-            if (e) { e.stopPropagation(); e.preventDefault(); }
+            if(e) { e.stopPropagation(); e.preventDefault(); } // Stop Browser Reload
             if (id === activeStaff.id) return;
+            if(!confirm(`Möchtest du ${name} wirklich löschen?`)) return;
+            
             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', id));
             logActivity('ADMIN', `Gelöscht: ${name}`);
           };
 
           const togglePermission = async (id, appIdTarget, perms = [], e) => {
-            if (e) { e.stopPropagation(); e.preventDefault(); }
+            if(e) { e.stopPropagation(); e.preventDefault(); } // Stop Browser Reload
             const newPerms = perms.includes(appIdTarget) ? perms.filter(p => p !== appIdTarget) : [...perms, appIdTarget];
             await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', id), { permissions: newPerms });
           };
 
           const handleSaveUrls = async (e) => {
-             if (e) e.preventDefault();
+             if(e) e.preventDefault();
              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'app_urls'), urlForm);
              alert('Gespeichert');
           };
@@ -203,7 +246,7 @@
                 <div className="flex items-center gap-3"><div className="w-10 h-10 bg-gradient-to-br from-amber-600 to-amber-700 rounded-lg flex items-center justify-center text-slate-950 font-bold">M</div><span className="text-xl tracking-widest text-white"><span className="font-bold">MABELLE</span> <span className="font-normal text-amber-600">HUB</span></span></div>
                 <div className="flex items-center gap-6">
                   <div className="text-right hidden sm:block"><div className="text-sm font-medium text-white">{activeStaff.name}</div><div className="text-[10px] uppercase tracking-wider text-amber-600">{activeStaff.isAdmin ? 'Admin' : 'Mitarbeiter'}</div></div>
-                  <button type="button" onClick={() => { setActiveStaff(null); setView('login'); setFormData({ name: '', pin: '', isAdmin: false }); setEditingId(null); }} className="p-3 hover:bg-slate-800 rounded-full text-slate-500 hover:text-amber-500 transition-colors"><LogOut size={20} /></button>
+                  <button type="button" onClick={handleLogout} className="p-3 hover:bg-slate-800 rounded-full text-slate-500 hover:text-amber-500 transition-colors"><LogOut size={20} /></button>
                 </div>
               </header>
               <main className="max-w-7xl mx-auto p-6 py-10">
@@ -241,15 +284,15 @@
                     <div className="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 overflow-hidden min-h-[400px]">
                       {adminTab === 'staff' && (
                         <>
-                          <div className={`p-8 border-b border-slate-800 flex flex-wrap gap-6 items-end ${editingId ? 'bg-amber-900/10' : ''}`}>
+                          <form onSubmit={handleSaveStaff} className={`p-8 border-b border-slate-800 flex flex-wrap gap-6 items-end ${editingId ? 'bg-amber-900/10' : ''}`}>
                             <div className="flex-1 min-w-[200px]"><label className="block text-xs font-bold text-amber-600 mb-2">Name</label><input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white" placeholder="Name" /></div>
                             <div className="w-32"><label className="block text-xs font-bold text-amber-600 mb-2">PIN</label><input type="text" maxLength={4} value={formData.pin} onChange={e => setFormData({...formData, pin: e.target.value.replace(/\D/g,'')})} className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white text-center" placeholder="0000" /></div>
                             <div className="flex items-center gap-2 h-12"><input type="checkbox" checked={formData.isAdmin} onChange={e => setFormData({...formData, isAdmin: e.target.checked})} className="h-5 w-5 accent-amber-600" /> <span className="text-sm text-slate-300">Admin</span></div>
                             <div className="flex gap-2">
                               {editingId && <button type="button" onClick={() => { setFormData({ name: '', pin: '', isAdmin: false }); setEditingId(null); }} className="bg-slate-800 text-slate-400 px-4 py-3 rounded-xl font-bold">X</button>}
-                              <button type="button" onClick={handleSaveStaff} disabled={!formData.name || formData.pin.length < 4} className="bg-amber-600 text-slate-950 px-8 py-3 rounded-xl font-bold disabled:opacity-30">{editingId ? 'SPEICHERN' : 'ANLEGEN'}</button>
+                              <button type="submit" disabled={!formData.name || formData.pin.length < 4} className="bg-amber-600 text-slate-950 px-8 py-3 rounded-xl font-bold disabled:opacity-30">{editingId ? 'SPEICHERN' : 'ANLEGEN'}</button>
                             </div>
-                          </div>
+                          </form>
                           <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                               <thead className="bg-slate-950 text-[10px] uppercase text-slate-500 border-b border-slate-800"><tr><th className="px-6 py-4">Name</th><th className="px-4 py-4 text-center">Manager</th><th className="px-4 py-4 text-center">Order</th><th className="px-4 py-4 text-center">Booking</th><th className="px-4 py-4 text-center">Timer</th><th className="px-6 py-4 text-right">Edit</th></tr></thead>
