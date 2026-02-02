@@ -17,12 +17,14 @@
       }
     }
     </script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- FIX: Verwendung einer festen, stabilen Version von Babel, um den "targets"-Fehler zu vermeiden -->
+    <script src="https://unpkg.com/@babel/standalone@7.23.6/babel.min.js"></script>
     <style>body { background-color: #020617; color: white; }</style>
 </head>
 <body>
     <div id="root"></div>
-    <script type="text/babel" data-type="module">
+    <!-- data-presets="react" explizit setzen, um Konflikte zu vermeiden -->
+    <script type="text/babel" data-type="module" data-presets="react">
         import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
         import { initializeApp } from 'firebase/app';
