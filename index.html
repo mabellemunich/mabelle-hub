@@ -60,17 +60,53 @@
             if (pin.length < 4) {
               const newPin = pin + num;
               setPin(newPin);
-              if (newPin.length === 4) setTimeout(() => { onComplete(newPin); setPin(''); }, 300);
+              if (newPin.length === 4) {
+                // Sofortige Ausführung bei der 4. Ziffer (kein spürbares Warten)
+                onComplete(newPin);
+                setTimeout(() => setPin(''), 100); 
+              }
             }
           };
           return (
-            <div className="flex flex-col items-center justify-center p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xs mx-auto">
-              <div className="mb-6 flex gap-3 h-6">{[0, 1, 2, 3].map(i => <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all ${pin.length > i ? 'bg-amber-600 border-amber-600 scale-110' : 'border-slate-700'}`} />)}</div>
-              <div className="grid grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => <button key={num} type="button" onClick={() => handleNum(num)} disabled={disabled} className="w-16 h-16 rounded-full bg-slate-800 text-2xl font-semibold text-slate-200 hover:bg-slate-700 active:bg-slate-600 disabled:opacity-50">{num}</button>)}
-                <div className="w-16 h-16"></div>
-                <button type="button" onClick={() => handleNum(0)} disabled={disabled} className="w-16 h-16 rounded-full bg-slate-800 text-2xl font-semibold text-slate-200 hover:bg-slate-700 active:bg-slate-600 disabled:opacity-50">0</button>
-                <button type="button" onClick={() => setPin(pin.slice(0, -1))} disabled={disabled} className="w-16 h-16 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-800 disabled:opacity-50"><X size={28} /></button>
+            <div className="flex flex-col items-center justify-center p-8 max-w-sm mx-auto">
+              <div className="mb-10 flex gap-6 h-6">
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} className={`w-5 h-5 rounded-full transition-all duration-200 ${
+                    pin.length > i 
+                      ? 'bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.6)] scale-110' 
+                      : 'bg-slate-800'
+                  }`} />
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-x-8 gap-y-6">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                  <button 
+                    key={num} 
+                    type="button" 
+                    onClick={() => handleNum(num)}
+                    disabled={disabled}
+                    className="w-20 h-20 rounded-full bg-slate-900/50 text-4xl font-light text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-all border border-slate-800 flex items-center justify-center mx-auto disabled:opacity-50"
+                  >
+                    {num}
+                  </button>
+                ))}
+                <div className="w-20 h-20"></div>
+                <button 
+                  type="button" 
+                  onClick={() => handleNum(0)}
+                  disabled={disabled}
+                  className="w-20 h-20 rounded-full bg-slate-900/50 text-4xl font-light text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-all border border-slate-800 flex items-center justify-center mx-auto disabled:opacity-50"
+                >
+                  0
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setPin(pin.slice(0, -1))}
+                  disabled={disabled || pin.length === 0}
+                  className="w-20 h-20 rounded-full flex items-center justify-center text-slate-500 hover:text-amber-500 hover:bg-slate-800 transition-colors disabled:opacity-30 mx-auto"
+                >
+                  <X size={36} strokeWidth={1.5} />
+                </button>
               </div>
             </div>
           );
@@ -236,9 +272,9 @@
 
           if (view === 'login') return (
             <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-              <div className="mb-10 text-center"><h1 className="text-5xl text-white tracking-widest mb-3"><span className="font-bold">MABELLE</span> <span className="font-normal text-amber-600">HUB</span></h1><p className="text-slate-500 text-xs">LOGIN</p></div>
+              <div className="mb-12 text-center"><h1 className="text-5xl text-white tracking-widest mb-3"><span className="font-bold">MABELLE</span> <span className="font-normal text-amber-600">HUB</span></h1><p className="text-slate-500 uppercase tracking-widest text-sm">Bitte PIN eingeben</p></div>
               <PinPad onComplete={handleGlobalPinLogin} disabled={false} />
-              {error && <div className="mt-8 text-rose-400 bg-rose-950/30 border border-rose-900 px-6 py-3 rounded-lg flex items-center gap-2"><Shield size={16}/> {error}</div>}
+              {error && <div className="mt-8 text-rose-400 font-medium bg-rose-950/30 border border-rose-900 px-6 py-3 rounded-lg flex items-center gap-2"><Shield size={16}/> {error}</div>}
             </div>
           );
 
