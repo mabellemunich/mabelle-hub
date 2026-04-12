@@ -61,61 +61,93 @@
         const db = getFirestore(app);
         const appId = 'mabelle-hub-live';
 
-        const PinPad = ({ onComplete, disabled }) => {
-          const [pin, setPin] = useState('');
-          const handleNum = (num) => {
+        const PinPad = ({ onComplete, disabled, errorMsg }) => {
+          const [pinInput, setPinInput] = useState('');
+          
+          const handleNumpadClick = (num) => {
             if (disabled) return;
-            if (pin.length < 4) {
-              const newPin = pin + num;
-              setPin(newPin);
+            if (pinInput.length < 4) {
+              const newPin = pinInput + num;
+              setPinInput(newPin);
               if (newPin.length === 4) {
-                // Sofortige Ausführung bei der 4. Ziffer (kein spürbares Warten)
+                // Sofortige Ausführung bei der 4. Ziffer (kein Warten)
                 onComplete(newPin);
-                setTimeout(() => setPin(''), 100); 
+                setTimeout(() => setPinInput(''), 300); // PIN-Feld kurz danach leeren
               }
             }
           };
+
+          const clearPin = () => {
+            setPinInput('');
+          };
+
           return (
-            <div className="flex flex-col items-center justify-center p-4 sm:p-8 max-w-sm mx-auto w-full">
-              <div className="mb-6 sm:mb-10 flex gap-4 sm:gap-6 h-6 justify-center">
-                {[0, 1, 2, 3].map(i => (
-                  <div key={i} className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full transition-all duration-200 ${
-                    pin.length > i 
-                      ? 'bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.6)] scale-110' 
-                      : 'bg-slate-800'
-                  }`} />
-                ))}
-              </div>
-              <div className="grid grid-cols-3 gap-3 sm:gap-4 w-full max-w-[320px]">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                  <button 
-                    key={num} 
-                    type="button" 
-                    onClick={() => handleNum(num)}
-                    disabled={disabled}
-                    className="w-full h-16 sm:h-20 rounded-2xl bg-slate-900/80 text-3xl sm:text-4xl font-light text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-all border border-slate-800 flex items-center justify-center disabled:opacity-50"
-                  >
-                    {num}
-                  </button>
-                ))}
-                <div></div>
-                <button 
-                  type="button" 
-                  onClick={() => handleNum(0)}
-                  disabled={disabled}
-                  className="w-full h-16 sm:h-20 rounded-2xl bg-slate-900/80 text-3xl sm:text-4xl font-light text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-all border border-slate-800 flex items-center justify-center disabled:opacity-50"
-                >
-                  0
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => setPin(pin.slice(0, -1))}
-                  disabled={disabled || pin.length === 0}
-                  className="w-full h-16 sm:h-20 rounded-2xl flex items-center justify-center text-slate-500 hover:text-amber-500 hover:bg-slate-800 transition-colors disabled:opacity-30"
-                >
-                  <X size={32} strokeWidth={1.5} />
-                </button>
-              </div>
+            <div className="w-full max-w-sm p-8 rounded-2xl shadow-xl transition-all duration-300 border bg-stone-800 border-stone-700">
+                
+                <h2 className="text-center text-3xl font-bold mb-8 text-stone-100 tracking-widest">
+                    MABELLE <span className="text-amber-600 font-normal">HUB</span>
+                </h2>
+                
+                {/* Die 4 PIN-Punkte */}
+                <div className="flex justify-center gap-4 mb-8">
+                    {[0, 1, 2, 3].map(i => (
+                        <div 
+                            key={i} 
+                            className={`w-4 h-4 rounded-full border transition-all duration-200 
+                                ${pinInput.length > i 
+                                    ? 'bg-amber-600 border-amber-600 scale-110' 
+                                    : `border-stone-600 ${errorMsg ? 'border-red-500 bg-red-900/30' : ''}`
+                                }`}
+                        ></div>
+                    ))}
+                </div>
+
+                {/* Fehlermeldung */}
+                {errorMsg && (
+                    <p className="text-red-500 text-center text-sm mb-4 font-medium animate-pulse">
+                        {errorMsg}
+                    </p>
+                )}
+
+                {/* Das Zahlenfeld (Numpad) */}
+                <div className="grid grid-cols-3 gap-4 mb-2">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                        <button 
+                            key={num} 
+                            type="button"
+                            onClick={() => handleNumpadClick(String(num))} 
+                            disabled={disabled}
+                            className="h-16 rounded-xl text-xl font-bold transition-all active:scale-95 bg-stone-700 text-stone-100 hover:bg-stone-600 disabled:opacity-50"
+                        >
+                            {num}
+                        </button>
+                    ))}
+                    
+                    {/* Die Null (zentriert in der unteren Reihe) */}
+                    <div className="col-start-2">
+                        <button 
+                            type="button"
+                            onClick={() => handleNumpadClick('0')} 
+                            disabled={disabled}
+                            className="w-full h-16 rounded-xl text-xl font-bold transition-all active:scale-95 bg-stone-700 text-stone-100 hover:bg-stone-600 disabled:opacity-50"
+                        >
+                            0
+                        </button>
+                    </div>
+                    
+                    {/* Löschen / X-Button */}
+                    <div>
+                        <button 
+                            type="button"
+                            onClick={clearPin} 
+                            disabled={disabled || pinInput.length === 0}
+                            className="w-full h-16 rounded-xl flex items-center justify-center text-red-500 hover:bg-stone-700 transition-all active:scale-95 disabled:opacity-30"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
+                </div>
+
             </div>
           );
         };
@@ -205,7 +237,7 @@
                 sessionStorage.setItem('mabelle_hub_user_id', found.id);
                 logActivity('LOGIN', 'Login', found); 
             }
-            else { setError('PIN falsch'); setTimeout(() => setError(''), 2000); }
+            else { setError('Falsche PIN'); setTimeout(() => setError(''), 2000); }
           };
 
           const handleLogout = () => {
@@ -220,6 +252,7 @@
           const handleAppLaunch = (appConf) => {
             const targetUrl = customUrls[appConf.id] || appConf.defaultUrl;
             logActivity('APP_ACCESS', `App: ${appConf.name}`);
+            // Einfache Weiterleitung (Ohne Token/SSO)
             window.open(targetUrl, '_blank');
           };
 
@@ -266,23 +299,21 @@
              alert('Gespeichert');
           };
 
-          if (view === 'loading') return <div className="min-h-[100dvh] flex items-center justify-center bg-slate-950 text-amber-600 animate-pulse">LÄDT...</div>;
+          if (view === 'loading') return <div className="min-h-[100dvh] flex items-center justify-center bg-stone-900 text-amber-600 animate-pulse">LÄDT...</div>;
           
           if (staffList.length === 0) return (
-            <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-slate-950 p-4 text-center">
+            <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-stone-900 p-4 text-center">
               <Shield className="w-16 h-16 text-amber-600 mx-auto mb-4" />
               <button type="button" onClick={async () => {
                 await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', 'admin-001'), { name: 'Admin', pin: '0000', isAdmin: true, permissions: ['manager', 'order', 'booking', 'timer'] });
                 window.location.reload();
-              }} className="bg-amber-600 text-white py-3 px-8 rounded-xl font-bold">START (ADMIN 0000)</button>
+              }} className="bg-amber-600 text-stone-900 py-3 px-8 rounded-xl font-bold">START (ADMIN 0000)</button>
             </div>
           );
 
           if (view === 'login') return (
-            <div className="min-h-[100dvh] bg-slate-950 flex flex-col items-center justify-center p-4">
-              <div className="mb-4 sm:mb-6 text-center"><h1 className="text-4xl sm:text-5xl text-white tracking-widest"><span className="font-bold">MABELLE</span> <span className="font-normal text-amber-600">HUB</span></h1></div>
-              <PinPad onComplete={handleGlobalPinLogin} disabled={false} />
-              {error && <div className="mt-6 sm:mt-8 text-rose-400 font-medium bg-rose-950/30 border border-rose-900 px-4 sm:px-6 py-2 sm:py-3 rounded-lg flex items-center gap-2 text-sm sm:text-base"><Shield size={16}/> {error}</div>}
+            <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 transition-colors duration-300 bg-stone-900">
+              <PinPad onComplete={handleGlobalPinLogin} disabled={false} errorMsg={error} />
             </div>
           );
 
